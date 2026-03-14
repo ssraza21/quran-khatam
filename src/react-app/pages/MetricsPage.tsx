@@ -474,6 +474,11 @@ export default function MetricsPage() {
           </div>
 
         </div>
+
+        <p className="text-center text-xs text-[#666] mt-8">
+          Made with ❤️ by <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer" className="text-[#8B0000] hover:underline">Shahrukh</a>
+        </p>
+
       </div>
     </div>
   );
