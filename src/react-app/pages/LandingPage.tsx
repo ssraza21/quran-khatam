@@ -42,7 +42,7 @@ export default function LandingPage() {
               Start Reading
             </Link>
             <Link to="/metrics"
-              className="bg-transparent border-2 border-white/40 text-white no-underline px-8 py-3 rounded-full text-base font-medium hover:bg-white/10 hover:border-white/60 transition-all duration-200 inline-block">
+              className="bg-transparent border-2 border-white/70 text-white no-underline px-8 py-3 rounded-full text-base font-medium hover:bg-white/10 hover:border-white transition-all duration-200 inline-block">
               View Metrics
             </Link>
           </div>
@@ -152,7 +152,7 @@ export default function LandingPage() {
               Go to Tracker
             </Link>
             <Link to="/metrics"
-              className="bg-transparent border-2 border-white/30 text-white no-underline px-8 py-3 rounded-full text-base font-medium hover:bg-white/10 hover:border-white/50 transition-all duration-200 inline-block">
+              className="bg-transparent border-2 border-white/70 text-white no-underline px-8 py-3 rounded-full text-base font-medium hover:bg-white/10 hover:border-white transition-all duration-200 inline-block">
               View Metrics
             </Link>
           </div>
