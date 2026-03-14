@@ -122,17 +122,9 @@ export default function LandingPage() {
               Sisters Khatam
             </Link>
           </div>
+
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="py-6 text-center text-sm text-gray-400 bg-[#1a0000]">
-        Made with ❤️ by{" "}
-        <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer"
-          className="text-white/70 hover:text-white transition-colors duration-200 underline underline-offset-2">
-          Shahrukh
-        </a>
-      </footer>
     </>
   );
 }
