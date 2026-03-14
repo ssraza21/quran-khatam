@@ -20,9 +20,14 @@ export default function Footer() {
             <Link to="/metrics" className="text-white/50 hover:text-white transition-colors no-underline">Metrics</Link>
           </div>
 
-          <p className="text-xs text-white/30 text-center md:text-right">
-            A community Quran completion tracker
-          </p>
+          <div className="text-center md:text-right">
+            <p className="text-xs text-white/30">
+              A community Quran completion tracker
+            </p>
+            <p className="text-xs text-white/30 mt-1">
+              Made with ❤️ by <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer" className="text-white/50 hover:text-white transition-colors no-underline">Shahrukh</a>
+            </p>
+          </div>
         </div>
       </div>
     </footer>
