@@ -17,7 +17,7 @@ export default function Navbar() {
           <div className="w-9 h-9 bg-gradient-to-br from-[#8B0000] to-[#5A0000] rounded-lg flex items-center justify-center shadow-sm">
             <span className="text-white text-base font-bold" style={{ fontFamily: "'Amiri', serif" }}>ق</span>
           </div>
-          <span className="text-lg font-semibold text-[#2C2C2C]" style={{ fontFamily: "'Playfair Display', serif" }}>
+          <span className="text-lg font-semibold text-[#2C2C2C] whitespace-nowrap" style={{ fontFamily: "'Playfair Display', serif" }}>
             Khatm al-Quran
           </span>
         </Link>
