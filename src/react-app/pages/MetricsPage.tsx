@@ -68,7 +68,7 @@ export default function MetricsPage() {
   const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number }[]>([]);
+  const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number; name: string | null }[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
 
   const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
@@ -77,7 +77,7 @@ export default function MetricsPage() {
   const loadKhatams = useCallback(async () => {
     const { data } = await supabase
       .from("khatams")
-      .select("id, khatam_num")
+      .select("id, khatam_num, name")
       .eq("group_name", group)
       .order("khatam_num", { ascending: true });
     if (data && data.length > 0) {
@@ -229,7 +229,7 @@ export default function MetricsPage() {
           </h1>
 
           <div className="inline-flex items-center gap-3 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
-            <span>Khatam #{khatamNum}</span>
+            <span>{khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}</span>
             <div className="w-px h-3.5 bg-white/30" />
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -262,7 +262,7 @@ export default function MetricsPage() {
                       : { background: "#F5F5F5", color: "#777" }
                     }
                   >
-                    #{k.khatam_num}
+                    {k.name ?? `#${k.khatam_num}`}
                     {isLatest && (
                       <span
                         className="w-1.5 h-1.5 rounded-full"
