@@ -14,8 +14,8 @@ interface SlotDrawerProps {
   q: number;
   open: boolean;
   onClose: () => void;
-  onBook: (juz: number, q: number, name: string) => { err: string } | undefined;
-  onComplete: (juz: number, q: number, name: string) => { err: string } | undefined;
+  onBook: (juz: number, q: number, name: string) => Promise<{ err: string } | undefined>;
+  onComplete: (juz: number, q: number, name: string) => Promise<{ err: string } | undefined>;
 }
 
 export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComplete }: SlotDrawerProps) {
@@ -35,22 +35,22 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
 
   const c = COLORS[slot.status];
 
-  const doBook = () => {
+  const doBook = async () => {
     if (!name.trim()) { setErr("Please enter your name"); return; }
-    const res = onBook(juz, q, name.trim());
+    const res = await onBook(juz, q, name.trim());
     if (res?.err) setErr(res.err);
   };
 
-  const doComplete = () => {
+  const doComplete = async () => {
     if (!name.trim()) { setErr("Please enter your name"); return; }
-    const res = onComplete(juz, q, name.trim());
+    const res = await onComplete(juz, q, name.trim());
     if (res?.err) setErr(res.err);
   };
 
   return (
-    <Drawer open={open} onOpenChange={o => !o && onClose()}>
-      <DrawerContent className="max-w-lg mx-auto">
-        <DrawerHeader className="pt-6 pb-2">
+    <Drawer open={open} onOpenChange={o => !o && onClose()} repositionInputs={false}>
+      <DrawerContent className="max-w-lg mx-auto max-h-[90vh] flex flex-col">
+        <DrawerHeader className="pt-6 pb-2 flex-none">
           <DrawerTitle className="text-xl" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
             Juz {juz} — {Q_LABELS[q - 1]}
           </DrawerTitle>
@@ -59,7 +59,7 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="px-4 pb-2">
+        <div className="px-4 pb-2 flex-1 overflow-y-auto">
           {/* Status badge */}
           <div
             className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 mb-4"
@@ -103,7 +103,7 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
                 onChange={e => setName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && doComplete()}
                 placeholder={slot.by || "Your name"}
-                className="w-full bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 rounded-lg text-[15px] outline-none focus:border-[#2E7D32] focus:ring-2 focus:ring-[#2E7D32]/10 transition-all mb-2"
+                className="w-full bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 rounded-lg text-[15px] outline-none focus:border-success focus:ring-2 focus:ring-success/10 transition-all mb-2"
               />
               {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
             </div>
@@ -112,7 +112,7 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
           {/* Done state */}
           {slot.status === "dn" && (
             <div className="text-center py-6">
-              <div className="text-4xl text-[#2E7D32] mb-3">&#10003;</div>
+              <div className="text-4xl text-success mb-3">&#10003;</div>
               <h3
                 className="text-xl mb-2"
                 style={{ fontFamily: "'Amiri', serif", color: "#8B0000", fontSize: 24 }}
@@ -122,34 +122,35 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
               <p className="text-sm text-gray-400">May Allah accept the recitation.</p>
             </div>
           )}
+          <div className="pb-32">
+            <DrawerFooter className="px-0 pt-4 pb-0">
+              {slot.status === "av" && (
+                <Button
+                  onClick={doBook}
+                  className="w-full h-12 rounded-full text-[15px] font-semibold bg-primary hover:bg-primary-dark text-white cursor-pointer"
+                >
+                  Claim This Quarter
+                </Button>
+              )}
+              {slot.status === "cl" && (
+                <Button
+                  onClick={doComplete}
+                  className="w-full h-12 rounded-full text-[15px] font-semibold bg-success hover:bg-[#1B5E20] text-white cursor-pointer"
+                >
+                  Mark Complete
+                </Button>
+              )}
+              <DrawerClose asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-11 rounded-full text-sm font-medium border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
+                >
+                  Cancel
+                </Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </div>
         </div>
-
-        <DrawerFooter className="pb-8">
-          {slot.status === "av" && (
-            <Button
-              onClick={doBook}
-              className="w-full h-12 rounded-full text-[15px] font-semibold bg-[#8B0000] hover:bg-[#5A0000] text-white cursor-pointer"
-            >
-              Claim This Quarter
-            </Button>
-          )}
-          {slot.status === "cl" && (
-            <Button
-              onClick={doComplete}
-              className="w-full h-12 rounded-full text-[15px] font-semibold bg-[#2E7D32] hover:bg-[#1B5E20] text-white cursor-pointer"
-            >
-              Mark Complete
-            </Button>
-          )}
-          <DrawerClose asChild>
-            <Button
-              variant="outline"
-              className="w-full h-11 rounded-full text-sm font-medium border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
-            >
-              Cancel
-            </Button>
-          </DrawerClose>
-        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );

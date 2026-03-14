@@ -23,7 +23,7 @@ export default function QCard({ slot, juz, q, adminMode, adminSelected, onSelect
     <div
       onClick={() => adminMode ? onSelect(juz, q) : onOpenModal(juz, q)}
       className={`
-        relative rounded-xl p-3.5 pb-3 text-center cursor-pointer select-none
+        relative rounded-xl p-3.5 pb-3 text-center cursor-pointer select-none flex flex-col items-center
         transition-all duration-200 ease-out
         hover:-translate-y-1 hover:shadow-lg
         ${isAdminSel ? "ring-2 ring-[#8B0000] shadow-md" : "shadow-sm"}

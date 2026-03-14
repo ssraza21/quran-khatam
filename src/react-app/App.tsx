@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import LandingPage from "./pages/LandingPage";
 import KhatamPage from "./pages/KhatamPage";
@@ -9,7 +9,8 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/khatam" element={<KhatamPage />} />
+        <Route path="/khatam" element={<Navigate to="/khatam/brothers" replace />} />
+        <Route path="/khatam/:group" element={<KhatamPage />} />
       </Route>
       <Route path="/metrics" element={<MetricsPage />} />
     </Routes>

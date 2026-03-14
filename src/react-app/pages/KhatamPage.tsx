@@ -1,21 +1,40 @@
+import { useParams } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
+import type { GroupName } from "@/hooks/useKhatamState";
 import { COLORS, Q_SHORT } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
+import KhatamSelector from "@/components/khatam/KhatamSelector";
 
 export default function KhatamPage() {
-  const state = useKhatamState();
+  const { group: groupParam } = useParams<{ group: string }>();
+  const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
+
+  const state = useKhatamState(group);
   const {
-    slots, khatamNum, modal, setModal,
+    slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
+    loading, modal, setModal,
     adminMode, adminSelected, setAdminSelected,
     adminPw, setAdminPw, adminErr,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onComplete,
+    selectKhatam,
     startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
+
+  if (loading && slots.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-[#8B0000] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500 text-sm">Loading Khatam...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -29,13 +48,10 @@ export default function KhatamPage() {
           }}
         />
         <div className="relative max-w-[1200px] mx-auto">
-          <h1 className="text-[46px] mb-1 font-normal tracking-widest text-white"
-            style={{ fontFamily: "'Amiri', serif" }}>
-            &#1582;&#1578;&#1605; &#1575;&#1604;&#1602;&#1585;&#1570;&#1606;
+          <h1 className="text-[40px] sm:text-[46px] mb-1 font-normal tracking-widest text-white"
+            style={{ fontFamily: "Playfair Display, serif" }}>
+            {group === "brothers" ? "Brothers" : "Sisters"} Khatam
           </h1>
-          <p className="text-[13px] tracking-[5px] uppercase opacity-70 font-light mb-4">
-            Khatm al-Quran Tracker
-          </p>
           <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
             Khatam #{khatamNum}
             {adminMode && (
@@ -47,6 +63,13 @@ export default function KhatamPage() {
         </div>
       </header>
 
+      {/* Khatam Selector */}
+      <KhatamSelector
+        khatams={khatams}
+        selectedId={selectedKhatamId}
+        onSelect={selectKhatam}
+      />
+
       {/* Stats Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-16 z-40 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-5 py-4">
@@ -57,10 +80,12 @@ export default function KhatamPage() {
                 Alhamdulillah — Khatam {khatamNum} Complete!
               </h2>
               <p className="text-sm opacity-80 mb-4">May Allah accept from everyone who participated.</p>
-              <button onClick={startNewKhatam}
-                className="bg-white text-[#8B0000] border-none px-7 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
-                Begin Khatam {khatamNum + 1}
-              </button>
+              {isLatestKhatam && (
+                <button onClick={startNewKhatam}
+                  className="bg-white text-[#8B0000] border-none px-7 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
+                  Begin Khatam {khatamNum + 1}
+                </button>
+              )}
             </div>
           )}
 
