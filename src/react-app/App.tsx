@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const JUZ_NAMES = [
-  "Alif Lām Mīm","Sayaqūl","Tilkar Rusul","Lan Tana Lu","Wal Muhsanat",
-  "Lā Yuhibbullāh","Wa Idhā Sami'u","Wa Law Annanā","Qālal Mala'u","Wa'lamu",
-  "Ya'tadhirūna","Wa Mā Min Dābbah","Wa Mā Ubarri'u","Rubamā","Subhānallad̲ī",
-  "Qāla Alam","Iqtaraba","Qad Aflaha","Wa Qālallad̲īna","Amman Khalaq",
-  "Utlu Mā Ūhiya","Wa Man Yaqnut","Wa Mā Liya","Faman Azlam","Ilayhī Yuraddu",
-  "Hā Mīm","Qāla Fama Khatbukum","Qad Sami'allāh","Tabārak","'Amma"
+  "Alif Lam Mim","Sayaqul","Tilkar Rusul","Lan Tana Lu","Wal Muhsanat",
+  "La Yuhibbullah","Wa Idha Sami'u","Wa Law Annana","Qalal Mala'u","Wa'lamu",
+  "Ya'tadhiruna","Wa Ma Min Dabbah","Wa Ma Ubarri'u","Rubama","Subhanallad\u0331i",
+  "Qala Alam","Iqtaraba","Qad Aflaha","Wa Qalallad\u0331ina","Amman Khalaq",
+  "Utlu Ma Uhiya","Wa Man Yaqnut","Wa Ma Liya","Faman Azlam","Ilayhi Yuraddu",
+  "Ha Mim","Qala Fama Khatbukum","Qad Sami'allah","Tabarak","'Amma"
 ];
 
 const Q_LABELS = ["1st Quarter","2nd Quarter","3rd Quarter","4th Quarter"];
@@ -14,9 +14,9 @@ const Q_SHORT = ["Q1","Q2","Q3","Q4"];
 const ADMIN_PW = "quran2025";
 
 const COLORS = {
-  av: { bg:"#0f2744", border:"#1e5fa8", text:"#7ab8f0", label:"Available" },
-  cl: { bg:"#0f2d0f", border:"#1e7a1e", text:"#6dcc6d", label:"In Progress" },
-  dn: { bg:"#2d0f0f", border:"#8a1e1e", text:"#e07070", label:"Completed" },
+  av: { bg:"#FFFFFF", border:"#E0E0E0", text:"#4A4A4A", accent:"#1565C0", accentBg:"#E3F2FD", label:"Available" },
+  cl: { bg:"#FFFDE7", border:"#F9A825", text:"#5D4037", accent:"#F57F17", accentBg:"#FFF8E1", label:"In Progress" },
+  dn: { bg:"#E8F5E9", border:"#2E7D32", text:"#1B5E20", accent:"#2E7D32", accentBg:"#C8E6C9", label:"Completed" },
 } as const;
 
 type StatusKey = keyof typeof COLORS;
@@ -103,45 +103,46 @@ function Modal({ slot, juz, q, onClose, onBook, onComplete }: ModalProps) {
 
   return (
     <div onClick={onClose} style={{
-      position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,
-      display:"flex",alignItems:"flex-end",justifyContent:"center"
+      position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)",zIndex:300,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20
     }}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:"#1a150d",border:"1px solid rgba(201,168,76,0.35)",
-        borderRadius:"14px 14px 0 0",padding:"24px 20px 32px",
-        width:"100%",maxWidth:480,
-        animation:"slideUp 0.25s ease"
+        background:"#FFFFFF",borderRadius:16,padding:"32px 28px",
+        width:"100%",maxWidth:440,
+        boxShadow:"0 20px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)",
+        animation:"modalIn 0.3s ease"
       }}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
           <div>
-            <div style={{fontFamily:"'Palatino Linotype',Georgia,serif",fontSize:17,color:"#e8c96a",marginBottom:3}}>
+            <h3 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontSize:22,color:"#2C2C2C",marginBottom:4}}>
               Juz {juz} — {Q_LABELS[q-1]}
-            </div>
-            <div style={{fontSize:12,color:"rgba(240,226,192,0.5)",fontFamily:"sans-serif"}}>{JUZ_NAMES[juz-1]}</div>
+            </h3>
+            <div style={{fontSize:13,color:"#888",fontStyle:"italic"}}>{JUZ_NAMES[juz-1]}</div>
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(240,226,192,0.4)",fontSize:22,cursor:"pointer",lineHeight:1,padding:"0 4px"}}>×</button>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#BBB",fontSize:24,cursor:"pointer",lineHeight:1,padding:"0 4px"}}>×</button>
         </div>
 
-        <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.border}`,borderRadius:20,padding:"4px 12px",marginBottom:20}}>
-          <span style={{width:7,height:7,borderRadius:"50%",background:c.border,display:"inline-block"}}/>
-          <span style={{fontSize:12,color:c.text,fontFamily:"sans-serif"}}>{c.label}{slot.by ? ` — ${slot.by}` : ""}</span>
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:c.accentBg,border:`1px solid ${c.border}`,borderRadius:24,padding:"5px 14px",marginBottom:20}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:c.accent,display:"inline-block"}}/>
+          <span style={{fontSize:13,color:c.text,fontWeight:500}}>{c.label}{slot.by ? ` — ${slot.by}` : ""}</span>
         </div>
 
         {slot.at && (
-          <div style={{fontSize:11,color:"rgba(240,226,192,0.35)",fontFamily:"sans-serif",marginBottom:16}}>
+          <div style={{fontSize:12,color:"#999",marginBottom:16}}>
             {slot.status==="dn" ? `Completed ${timeAgo(slot.done_at)}` : `Claimed ${timeAgo(slot.at)}`}
           </div>
         )}
 
         {slot.status === "av" && (
           <>
-            <div style={{fontSize:13,color:"rgba(240,226,192,0.6)",fontFamily:"sans-serif",marginBottom:10}}>Enter your name to claim this section:</div>
+            <div style={{fontSize:14,color:"#666",marginBottom:12}}>Enter your name to claim this section:</div>
             <input ref={inputRef} value={name} onChange={e=>setName(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&doBook()}
               placeholder="Your name"
-              style={{width:"100%",background:"#221c10",border:"1px solid rgba(201,168,76,0.25)",color:"#f0e2c0",padding:"11px 14px",borderRadius:6,fontSize:14,outline:"none",fontFamily:"sans-serif",marginBottom:6}}/>
-            {err && <div style={{fontSize:12,color:"#e07070",marginBottom:10,fontFamily:"sans-serif"}}>{err}</div>}
-            <button onClick={doBook} style={{width:"100%",background:"#1e5fa8",border:"1px solid #2a7ad4",color:"#c8e4ff",padding:13,borderRadius:6,fontSize:14,cursor:"pointer",fontFamily:"sans-serif",fontWeight:"bold",marginTop:4}}>
+              style={{width:"100%",background:"#F8F8F8",border:"1px solid #E0E0E0",color:"#333",padding:"12px 16px",borderRadius:8,fontSize:15,outline:"none",marginBottom:8,transition:"border-color 0.2s"}}
+            />
+            {err && <div style={{fontSize:13,color:"#D32F2F",marginBottom:10}}>{err}</div>}
+            <button onClick={doBook} style={{width:"100%",background:"#8B0000",border:"none",color:"#FFF",padding:"14px",borderRadius:24,fontSize:15,cursor:"pointer",fontWeight:600,marginTop:4,letterSpacing:0.3}}>
               Claim This Quarter
             </button>
           </>
@@ -149,23 +150,26 @@ function Modal({ slot, juz, q, onClose, onBook, onComplete }: ModalProps) {
 
         {slot.status === "cl" && (
           <>
-            <div style={{fontSize:13,color:"rgba(240,226,192,0.6)",fontFamily:"sans-serif",marginBottom:10}}>Confirm your name to mark complete:</div>
+            <div style={{fontSize:14,color:"#666",marginBottom:12}}>Confirm your name to mark complete:</div>
             <input ref={inputRef} value={name} onChange={e=>setName(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&doComplete()}
               placeholder={slot.by || "Your name"}
-              style={{width:"100%",background:"#221c10",border:"1px solid rgba(201,168,76,0.25)",color:"#f0e2c0",padding:"11px 14px",borderRadius:6,fontSize:14,outline:"none",fontFamily:"sans-serif",marginBottom:6}}/>
-            {err && <div style={{fontSize:12,color:"#e07070",marginBottom:10,fontFamily:"sans-serif"}}>{err}</div>}
-            <button onClick={doComplete} style={{width:"100%",background:"#4a0f0f",border:"1px solid #8a1e1e",color:"#f0a0a0",padding:13,borderRadius:6,fontSize:14,cursor:"pointer",fontFamily:"sans-serif",fontWeight:"bold",marginTop:4}}>
-              ✓ Mark Complete
+              style={{width:"100%",background:"#F8F8F8",border:"1px solid #E0E0E0",color:"#333",padding:"12px 16px",borderRadius:8,fontSize:15,outline:"none",marginBottom:8,transition:"border-color 0.2s"}}
+            />
+            {err && <div style={{fontSize:13,color:"#D32F2F",marginBottom:10}}>{err}</div>}
+            <button onClick={doComplete} style={{width:"100%",background:"#2E7D32",border:"none",color:"#FFF",padding:"14px",borderRadius:24,fontSize:15,cursor:"pointer",fontWeight:600,marginTop:4,letterSpacing:0.3}}>
+              Mark Complete
             </button>
           </>
         )}
 
         {slot.status === "dn" && (
-          <div style={{textAlign:"center",padding:"16px 0"}}>
-            <div style={{fontSize:28,marginBottom:8}}>✨</div>
-            <div style={{fontFamily:"'Palatino Linotype',Georgia,serif",color:"#e8c96a",fontSize:15,marginBottom:6}}>الحمد لله</div>
-            <div style={{fontSize:13,color:"rgba(240,226,192,0.5)",fontFamily:"sans-serif"}}>May Allah accept the recitation.</div>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:36,marginBottom:10,color:"#2E7D32"}}>&#10003;</div>
+            <h3 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",color:"#8B0000",fontSize:20,marginBottom:8}}>
+              Alhamdulillah
+            </h3>
+            <div style={{fontSize:14,color:"#888"}}>May Allah accept the recitation.</div>
           </div>
         )}
       </div>
@@ -189,33 +193,45 @@ function QCard({ slot, juz, q, adminMode, adminSelected, onSelect, onOpenModal }
   const stale = isStale(slot);
   const isAdminSel = adminMode && adminSelected?.juz===juz && adminSelected?.q===q;
 
+  const statusIcon = slot.status === "dn" ? "\u2713" : slot.status === "cl" ? "\u25CE" : "\u25CB";
+
   return (
     <div
       onClick={() => adminMode ? onSelect(juz, q) : onOpenModal(juz, q)}
       style={{
         background: c.bg,
-        border: `1px solid ${isAdminSel ? "#e8c96a" : stale ? "rgba(255,140,0,0.5)" : c.border}`,
-        borderRadius: 8,
-        padding: "10px 6px 8px",
+        border: `1.5px solid ${isAdminSel ? "#8B0000" : stale ? "#FF8F00" : c.border}`,
+        borderRadius: 10,
+        padding: "14px 8px 12px",
         cursor: "pointer",
         textAlign: "center",
         position: "relative",
-        transition: "transform 0.12s, border-color 0.15s",
-        boxShadow: isAdminSel ? "0 0 0 2px rgba(232,201,106,0.4)" : "none",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+        boxShadow: isAdminSel ? "0 0 0 3px rgba(139,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.06)",
         userSelect: "none",
       }}
-      onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"}
-      onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow = isAdminSel
+          ? "0 0 0 3px rgba(139,0,0,0.2), 0 6px 16px rgba(0,0,0,0.1)"
+          : "0 6px 16px rgba(0,0,0,0.08)";
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow = isAdminSel
+          ? "0 0 0 3px rgba(139,0,0,0.2)"
+          : "0 1px 3px rgba(0,0,0,0.06)";
+      }}
     >
-      {stale && <span style={{position:"absolute",top:3,right:5,fontSize:9,color:"orange",fontFamily:"sans-serif"}}>!</span>}
-      <div style={{fontSize:10,color:c.text,opacity:0.7,fontFamily:"sans-serif",marginBottom:3}}>{Q_SHORT[q-1]}</div>
-      <div style={{fontSize:16,color:c.text}}>{slot.status==="dn"?"✓":slot.status==="cl"?"◎":"◌"}</div>
-      {slot.by && <div style={{fontSize:8,color:c.text,opacity:0.75,marginTop:3,fontFamily:"sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{slot.by.split(" ")[0]}</div>}
+      {stale && <span style={{position:"absolute",top:4,right:6,fontSize:10,color:"#FF8F00",fontWeight:700}}>!</span>}
+      <div style={{fontSize:11,color:"#999",fontWeight:500,marginBottom:4,letterSpacing:0.5}}>{Q_SHORT[q-1]}</div>
+      <div style={{fontSize:20,color:c.accent,fontWeight:600}}>{statusIcon}</div>
+      {slot.by && <div style={{fontSize:10,color:c.text,fontWeight:500,marginTop:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{slot.by.split(" ")[0]}</div>}
       {slot.status==="cl" && !adminMode && (
         <div
           onClick={e=>{e.stopPropagation();onOpenModal(juz,q);}}
-          style={{marginTop:5,background:"rgba(139,30,30,0.5)",border:"1px solid #8a1e1e",color:"#f08080",fontSize:8,padding:"3px 4px",borderRadius:3,cursor:"pointer",fontFamily:"sans-serif",lineHeight:1.2}}
-        >Mark Complete</div>
+          style={{marginTop:6,background:"#8B0000",color:"#FFF",fontSize:9,padding:"3px 6px",borderRadius:12,cursor:"pointer",lineHeight:1.3,fontWeight:600,letterSpacing:0.3}}
+        >Complete</div>
       )}
     </div>
   );
@@ -235,22 +251,42 @@ function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal }:
   const [open, setOpen] = useState(false);
   const jSlots = slots.filter(s=>s.juz===juz);
   const done = jSlots.filter(s=>s.status==="dn").length;
+  const allDone = done === 4;
 
   return (
-    <div style={{background:"#1a150d",border:"1px solid rgba(201,168,76,0.15)",borderRadius:8,overflow:"hidden"}}>
-      <div onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",padding:"10px 14px",cursor:"pointer",gap:10}}>
-        <div style={{fontFamily:"sans-serif",fontWeight:"bold",fontSize:13,color:"#c9a84c",minWidth:50}}>Juz {juz}</div>
-        <div style={{flex:1,fontSize:11,color:"rgba(240,226,192,0.45)",fontFamily:"sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{JUZ_NAMES[juz-1]}</div>
-        <div style={{display:"flex",gap:3,marginRight:8}}>
+    <div style={{
+      background:"#FFFFFF",
+      border:"1px solid #E8E8E8",
+      borderRadius:10,
+      overflow:"hidden",
+      transition:"box-shadow 0.2s ease",
+      boxShadow: open ? "0 4px 12px rgba(0,0,0,0.06)" : "none"
+    }}>
+      <div
+        onClick={()=>setOpen(o=>!o)}
+        style={{display:"flex",alignItems:"center",padding:"14px 18px",cursor:"pointer",gap:12,
+        background: allDone ? "#FAFFF9" : "transparent"
+      }}>
+        <div style={{
+          fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontWeight:600,fontSize:15,
+          color: allDone ? "#2E7D32" : "#8B0000",minWidth:55
+        }}>Juz {juz}</div>
+        <div style={{flex:1,fontSize:13,color:"#999",fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {JUZ_NAMES[juz-1]}
+        </div>
+        <div style={{display:"flex",gap:4,marginRight:8}}>
           {jSlots.map((s,i)=>(
-            <div key={i} style={{width:10,height:5,borderRadius:2,background:s.status==="dn"?COLORS.dn.border:s.status==="cl"?COLORS.cl.border:"rgba(255,255,255,0.1)"}}/>
+            <div key={i} style={{
+              width:12,height:6,borderRadius:3,
+              background: s.status==="dn" ? "#2E7D32" : s.status==="cl" ? "#F9A825" : "#E0E0E0"
+            }}/>
           ))}
         </div>
-        <div style={{fontSize:11,color:"rgba(240,226,192,0.4)",fontFamily:"sans-serif",minWidth:28,textAlign:"right"}}>{done}/4</div>
-        <div style={{fontSize:10,color:"rgba(240,226,192,0.3)",marginLeft:4}}>{open?"▲":"▼"}</div>
+        <div style={{fontSize:13,color:"#999",fontWeight:500,minWidth:28,textAlign:"right"}}>{done}/4</div>
+        <div style={{fontSize:11,color:"#CCC",marginLeft:4,transition:"transform 0.2s",transform:open?"rotate(180deg)":"rotate(0deg)"}}>&#9660;</div>
       </div>
       {open && (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,padding:"0 10px 10px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 14px 14px",animation:"fadeIn 0.2s ease"}}>
           {jSlots.map(s=>(
             <QCard key={s.q} slot={s} juz={juz} q={s.q}
               adminMode={adminMode} adminSelected={adminSelected}
@@ -307,7 +343,7 @@ export default function App() {
     if (slot.by && name.toLowerCase() !== slot.by.toLowerCase()) return { err: `This was claimed by ${slot.by}. Names don't match.` };
     updateSlot(juz, q, { status:"dn", by:name||slot.by, done_at:new Date().toISOString() });
     setModal(null);
-    showToast(`Barakallahu feek! Juz ${juz} ${Q_SHORT[q-1]} completed ✓`);
+    showToast(`Barakallahu feek! Juz ${juz} ${Q_SHORT[q-1]} completed`);
   };
 
   const startNewKhatam = () => {
@@ -336,120 +372,224 @@ export default function App() {
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
 
   return (
-    <div style={{minHeight:"100vh",background:"#13100a",color:"#f0e2c0",fontFamily:"'Palatino Linotype',Georgia,serif"}}>
+    <div style={{minHeight:"100vh",background:"#F3F3F3"}}>
       <style>{`
         @keyframes slideUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes modalIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
         @keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
-        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,0.3)} 50%{box-shadow:0 0 20px 6px rgba(201,168,76,0.15)} }
-        * { box-sizing: border-box; }
-        input { font-family: sans-serif; }
-        button { font-family: sans-serif; }
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #13100a; } ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.2); border-radius: 2px; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,0,0,0.2)} 50%{box-shadow:0 0 24px 8px rgba(139,0,0,0.08)} }
+        @keyframes progressGlow { 0%{box-shadow:0 0 8px rgba(139,0,0,0.3)} 50%{box-shadow:0 0 16px rgba(139,0,0,0.5)} 100%{box-shadow:0 0 8px rgba(139,0,0,0.3)} }
       `}</style>
 
-      {/* ── TOP ── */}
-      <div style={{background:"#1a150d",borderBottom:"1px solid rgba(201,168,76,0.2)",padding:"20px 16px 0",position:"sticky",top:0,zIndex:100}}>
-        <div style={{textAlign:"center",marginBottom:14}}>
-          <div style={{fontSize:24,color:"#e8c96a",letterSpacing:3,marginBottom:2}}>ختم القرآن</div>
-          <div style={{fontFamily:"sans-serif",fontSize:10,color:"rgba(240,226,192,0.35)",letterSpacing:4}}>KHATM AL-QURAN TRACKER</div>
-          <div style={{fontFamily:"sans-serif",fontSize:12,color:"rgba(201,168,76,0.7)",marginTop:6,letterSpacing:1}}>
-            Khatam #{khatamNum} {adminMode && <span style={{color:"#e8c96a",marginLeft:6,fontSize:10,background:"rgba(232,201,106,0.1)",border:"1px solid rgba(232,201,106,0.3)",padding:"1px 8px",borderRadius:10}}>ADMIN</span>}
+      {/* ── HERO HEADER ── */}
+      <header style={{
+        background:"linear-gradient(135deg, #8B0000 0%, #5A0000 100%)",
+        color:"#FFF",
+        textAlign:"center",
+        padding:"48px 20px 40px",
+        position:"relative",
+        overflow:"hidden"
+      }}>
+        {/* Decorative geometric pattern overlay */}
+        <div style={{
+          position:"absolute",inset:0,
+          backgroundImage:`url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          pointerEvents:"none"
+        }}/>
+
+        <div style={{position:"relative",maxWidth:1200,margin:"0 auto"}}>
+          <div style={{fontSize:42,fontFamily:"var(--font-heading, 'Playfair Display', serif)",marginBottom:4,letterSpacing:4,fontWeight:400}}>
+            &#1582;&#1578;&#1605; &#1575;&#1604;&#1602;&#1585;&#1570;&#1606;
+          </div>
+          <div style={{fontSize:13,letterSpacing:5,textTransform:"uppercase",opacity:0.7,fontWeight:300,marginBottom:16}}>
+            Khatm al-Quran Tracker
+          </div>
+          <div style={{
+            display:"inline-flex",alignItems:"center",gap:8,
+            background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+            borderRadius:24,padding:"6px 18px",fontSize:14,fontWeight:500
+          }}>
+            Khatam #{khatamNum}
+            {adminMode && (
+              <span style={{
+                fontSize:10,background:"rgba(255,255,255,0.2)",
+                padding:"2px 10px",borderRadius:10,fontWeight:600,letterSpacing:1
+              }}>ADMIN</span>
+            )}
           </div>
         </div>
+      </header>
 
-        {khatmComplete && (
-          <div style={{background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:8,padding:"14px 16px",marginBottom:14,textAlign:"center",animation:"pulse 2s infinite"}}>
-            <div style={{fontSize:18,color:"#e8c96a",marginBottom:4}}>الحمد لله — Khatam {khatamNum} Complete!</div>
-            <div style={{fontSize:12,color:"rgba(240,226,192,0.5)",fontFamily:"sans-serif",marginBottom:10}}>May Allah accept from everyone who participated.</div>
-            <button onClick={startNewKhatam} style={{background:"#c9a84c",color:"#1a1000",border:"none",padding:"9px 20px",borderRadius:6,fontSize:13,fontWeight:"bold",cursor:"pointer"}}>Begin Khatam {khatamNum+1}</button>
-          </div>
-        )}
-
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
-          {[
-            {label:"Completed",val:done,color:COLORS.dn.text},
-            {label:"In Progress",val:prog,color:COLORS.cl.text},
-            {label:"Remaining",val:rem,color:COLORS.av.text},
-          ].map(s=>(
-            <div key={s.label} style={{background:"#221c10",border:"1px solid rgba(201,168,76,0.1)",borderRadius:8,padding:"10px 6px",textAlign:"center"}}>
-              <div style={{fontSize:24,color:s.color,lineHeight:1}}>{s.val}</div>
-              <div style={{fontFamily:"sans-serif",fontSize:9,color:"rgba(240,226,192,0.4)",marginTop:3,textTransform:"uppercase",letterSpacing:1}}>{s.label}</div>
+      {/* ── STATS BAR ── */}
+      <div style={{
+        background:"#FFFFFF",
+        borderBottom:"1px solid #E8E8E8",
+        position:"sticky",top:0,zIndex:100,
+        boxShadow:"0 2px 8px rgba(0,0,0,0.04)"
+      }}>
+        <div style={{maxWidth:1200,margin:"0 auto",padding:"16px 20px"}}>
+          {khatmComplete && (
+            <div style={{
+              background:"linear-gradient(135deg, #5A0000, #8B0000)",
+              borderRadius:12,padding:"20px 24px",marginBottom:16,textAlign:"center",color:"#FFF",
+              animation:"pulse 2s infinite"
+            }}>
+              <h2 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontSize:22,color:"#FFF",marginBottom:6,fontWeight:600}}>
+                Alhamdulillah — Khatam {khatamNum} Complete!
+              </h2>
+              <div style={{fontSize:14,opacity:0.8,marginBottom:14}}>May Allah accept from everyone who participated.</div>
+              <button onClick={startNewKhatam} style={{
+                background:"#FFF",color:"#8B0000",border:"none",
+                padding:"10px 28px",borderRadius:24,fontSize:14,fontWeight:600,cursor:"pointer"
+              }}>Begin Khatam {khatamNum+1}</button>
             </div>
+          )}
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}}>
+            {[
+              {label:"Completed",val:done,color:"#2E7D32",bg:"#E8F5E9"},
+              {label:"In Progress",val:prog,color:"#F57F17",bg:"#FFF8E1"},
+              {label:"Remaining",val:rem,color:"#1565C0",bg:"#E3F2FD"},
+            ].map(s=>(
+              <div key={s.label} style={{
+                background:s.bg,borderRadius:10,padding:"14px 8px",textAlign:"center",
+                border:`1px solid ${s.color}20`
+              }}>
+                <div style={{fontSize:28,color:s.color,fontWeight:700,lineHeight:1,fontFamily:"var(--font-heading, 'Playfair Display', serif)"}}>{s.val}</div>
+                <div style={{fontSize:11,color:"#888",marginTop:4,textTransform:"uppercase",letterSpacing:1,fontWeight:500}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{height:6,background:"#F0F0F0",borderRadius:3,overflow:"hidden"}}>
+            <div style={{
+              height:"100%",width:`${pct}%`,
+              background:"linear-gradient(90deg, #8B0000, #B71C1C)",
+              borderRadius:3,transition:"width 0.6s ease"
+            }}/>
+          </div>
+          <div style={{fontSize:12,color:"#999",textAlign:"right",padding:"6px 0 0",fontWeight:500}}>{pct}% complete</div>
+        </div>
+      </div>
+
+      {/* ── MAIN CONTENT ── */}
+      <main style={{maxWidth:1200,margin:"0 auto",padding:"24px 20px 40px"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {Array.from({length:30},(_,i)=>i+1).map(juz=>(
+            <JuzRow key={juz} juz={juz} slots={slots}
+              adminMode={adminMode} adminSelected={adminSelected}
+              onSelect={(j,q)=>setAdminSelected({juz:j,q})}
+              onOpenModal={(j,q)=>setModal({juz:j,q})}/>
           ))}
         </div>
+      </main>
 
-        <div style={{height:4,background:"#221c10",borderRadius:2,overflow:"hidden"}}>
-          <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#8b6914,#c9a84c,#e8c96a)",borderRadius:2,transition:"width 0.6s ease"}}/>
+      {/* ── HOW IT WORKS SECTION ── */}
+      <section style={{background:"#FFFFFF",borderTop:"1px solid #E8E8E8",padding:"50px 20px"}}>
+        <div style={{maxWidth:1200,margin:"0 auto"}}>
+          <h2 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontSize:26,color:"#2C2C2C",textAlign:"center",marginBottom:8}}>
+            How It Works
+          </h2>
+          <p style={{textAlign:"center",color:"#888",marginBottom:36,fontSize:15}}>Participate in completing the Quran together as a community.</p>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:20}}>
+            {[
+              {num:"1",title:"Choose a Quarter",desc:"Tap any available quarter from the 30 Juz to claim it for recitation.",color:"#E3F2FD"},
+              {num:"2",title:"Enter Your Name",desc:"Provide your name so the community can see your commitment.",color:"#FFF8E1"},
+              {num:"3",title:"Recite & Complete",desc:"After reciting your portion, mark it as complete in the tracker.",color:"#E8F5E9"},
+              {num:"4",title:"Track Together",desc:"Watch the community progress. Maximum 8 quarters per person at a time.",color:"#FCE4EC"},
+            ].map(step=>(
+              <div key={step.num} style={{
+                background:step.color,borderRadius:12,padding:"28px 22px",textAlign:"center"
+              }}>
+                <div style={{
+                  width:40,height:40,borderRadius:"50%",background:"#8B0000",color:"#FFF",
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  fontSize:18,fontWeight:700,marginBottom:14,
+                  fontFamily:"var(--font-heading, 'Playfair Display', serif)"
+                }}>{step.num}</div>
+                <h3 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontSize:17,color:"#2C2C2C",marginBottom:8}}>{step.title}</h3>
+                <p style={{fontSize:14,color:"#666",lineHeight:1.6,margin:0}}>{step.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{fontFamily:"sans-serif",fontSize:10,color:"rgba(240,226,192,0.35)",textAlign:"right",padding:"4px 0 12px"}}>{pct}% complete</div>
-      </div>
+      </section>
 
-      {/* ── MIDDLE ── */}
-      <div style={{padding:"14px 12px",display:"flex",flexDirection:"column",gap:6}}>
-        {Array.from({length:30},(_,i)=>i+1).map(juz=>(
-          <JuzRow key={juz} juz={juz} slots={slots}
-            adminMode={adminMode} adminSelected={adminSelected}
-            onSelect={(j,q)=>setAdminSelected({juz:j,q})}
-            onOpenModal={(j,q)=>setModal({juz:j,q})}/>
-        ))}
-      </div>
-
-      {/* ── BOTTOM ── */}
-      <div style={{padding:"16px 12px",borderTop:"1px solid rgba(201,168,76,0.12)"}}>
-
-        {/* Legend */}
-        <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+      {/* ── LEGEND SECTION ── */}
+      <section style={{background:"#F3F3F3",padding:"36px 20px"}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",justifyContent:"center",gap:32,flexWrap:"wrap"}}>
           {(["av","cl","dn"] as StatusKey[]).map(k=>(
-            <div key={k} style={{display:"flex",alignItems:"center",gap:7,fontFamily:"sans-serif",fontSize:12,color:"rgba(240,226,192,0.6)"}}>
-              <div style={{width:12,height:12,borderRadius:3,background:COLORS[k].border}}/>
-              {COLORS[k].label}
+            <div key={k} style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:14,height:14,borderRadius:4,background:COLORS[k].accent,border:`1px solid ${COLORS[k].border}`}}/>
+              <span style={{fontSize:14,color:"#666",fontWeight:500}}>{COLORS[k].label}</span>
             </div>
           ))}
         </div>
+      </section>
 
-        {/* Instructions */}
-        <div style={{background:"#1a150d",border:"1px solid rgba(201,168,76,0.12)",borderRadius:8,padding:"12px 14px",marginBottom:16}}>
-          <div style={{fontFamily:"sans-serif",fontSize:12,color:"rgba(240,226,192,0.5)",lineHeight:1.8}}>
-            <span style={{color:"#c9a84c"}}>1.</span> Tap any <span style={{color:COLORS.av.text}}>blue</span> quarter to claim it.<br/>
-            <span style={{color:"#c9a84c"}}>2.</span> Enter your name — it turns <span style={{color:COLORS.cl.text}}>green</span> for everyone.<br/>
-            <span style={{color:"#c9a84c"}}>3.</span> After reciting, tap <span style={{color:COLORS.dn.text}}>"Mark Complete"</span> on your quarter.<br/>
-            <span style={{color:"#c9a84c"}}>4.</span> Maximum <span style={{color:"#e8c96a"}}>8 quarters</span> per person at a time.
-          </div>
-        </div>
+      {/* ── CTA / ADMIN SECTION ── */}
+      <section style={{
+        background:"linear-gradient(135deg, #5A0000 0%, #3A0000 100%)",
+        color:"#FFF",padding:"50px 20px",textAlign:"center"
+      }}>
+        <div style={{maxWidth:600,margin:"0 auto"}}>
+          <h2 style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",fontSize:24,color:"#FFF",marginBottom:8,fontWeight:600}}>
+            Organizer Admin
+          </h2>
+          <p style={{opacity:0.7,marginBottom:24,fontSize:14}}>Manage the Khatam, override statuses, and start new completions.</p>
 
-        {/* Admin */}
-        <div style={{background:"#1a150d",border:"1px solid rgba(201,168,76,0.2)",borderRadius:8,padding:"14px"}}>
-          <div style={{fontFamily:"sans-serif",fontSize:10,color:"#c9a84c",letterSpacing:3,textTransform:"uppercase",marginBottom:12}}>Organizer Admin</div>
           {!adminMode ? (
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:10,justifyContent:"center",maxWidth:400,margin:"0 auto"}}>
               <input type="password" value={adminPw} onChange={e=>setAdminPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryAdmin()}
                 placeholder="Admin password"
-                style={{flex:1,background:"#221c10",border:"1px solid rgba(201,168,76,0.2)",color:"#f0e2c0",padding:"9px 12px",borderRadius:6,fontSize:13,outline:"none"}}/>
-              <button onClick={tryAdmin} style={{background:"#c9a84c",color:"#1a1000",border:"none",padding:"9px 16px",borderRadius:6,fontSize:12,fontWeight:"bold",cursor:"pointer"}}>Unlock</button>
+                style={{flex:1,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.25)",color:"#FFF",padding:"11px 16px",borderRadius:24,fontSize:14,outline:"none"}}
+              />
+              <button onClick={tryAdmin} style={{
+                background:"#FFF",color:"#8B0000",border:"none",
+                padding:"11px 24px",borderRadius:24,fontSize:14,fontWeight:600,cursor:"pointer"
+              }}>Unlock</button>
             </div>
           ) : (
             <div style={{animation:"fadeIn 0.2s ease"}}>
-              <div style={{fontFamily:"sans-serif",fontSize:12,color:COLORS.cl.text,marginBottom:12}}>✓ Admin active — tap any quarter to select it</div>
+              <div style={{fontSize:14,color:"#81C784",marginBottom:16,fontWeight:500}}>
+                Admin active — tap any quarter above to select it
+              </div>
               {adminSelected && (
-                <div style={{fontFamily:"sans-serif",fontSize:11,color:"rgba(240,226,192,0.5)",marginBottom:10}}>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginBottom:12}}>
                   Selected: Juz {adminSelected.juz} {Q_SHORT[adminSelected.q-1]} ({getSlot(adminSelected.juz,adminSelected.q)?.by || "unclaimed"})
                 </div>
               )}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",marginBottom:12}}>
                 {(["av","cl","dn"] as StatusKey[]).map(st=>(
-                  <button key={st} onClick={()=>adminSetStatus(st)} style={{background:COLORS[st].bg,border:`1px solid ${COLORS[st].border}`,color:COLORS[st].text,padding:"7px 12px",borderRadius:6,fontSize:11,cursor:"pointer"}}>{`Set ${COLORS[st].label}`}</button>
+                  <button key={st} onClick={()=>adminSetStatus(st)} style={{
+                    background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.25)",
+                    color:"#FFF",padding:"8px 16px",borderRadius:24,fontSize:13,cursor:"pointer",fontWeight:500
+                  }}>Set {COLORS[st].label}</button>
                 ))}
               </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={startNewKhatam} style={{background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.3)",color:"#c9a84c",padding:"7px 14px",borderRadius:6,fontSize:11,cursor:"pointer"}}>+ New Khatam</button>
-                <button onClick={()=>{setAdminMode(false);setAdminSelected(null);showToast("Admin mode off");}} style={{background:"none",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,130,130,0.7)",padding:"7px 14px",borderRadius:6,fontSize:11,cursor:"pointer"}}>Deactivate</button>
+              <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+                <button onClick={startNewKhatam} style={{
+                  background:"#FFF",color:"#8B0000",border:"none",
+                  padding:"8px 20px",borderRadius:24,fontSize:13,cursor:"pointer",fontWeight:600
+                }}>+ New Khatam</button>
+                <button onClick={()=>{setAdminMode(false);setAdminSelected(null);showToast("Admin mode off");}} style={{
+                  background:"transparent",border:"1px solid rgba(255,255,255,0.3)",
+                  color:"rgba(255,255,255,0.8)",padding:"8px 20px",borderRadius:24,fontSize:13,cursor:"pointer",fontWeight:500
+                }}>Deactivate</button>
               </div>
             </div>
           )}
-          {adminErr && <div style={{fontSize:11,color:COLORS.dn.text,marginTop:6,fontFamily:"sans-serif"}}>{adminErr}</div>}
+          {adminErr && <div style={{fontSize:13,color:"#EF9A9A",marginTop:10}}>{adminErr}</div>}
         </div>
-      </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer style={{background:"#2C2C2C",color:"rgba(255,255,255,0.5)",textAlign:"center",padding:"24px 20px",fontSize:13}}>
+        <span style={{fontFamily:"var(--font-heading, 'Playfair Display', serif)",color:"rgba(255,255,255,0.7)"}}>Khatm al-Quran</span>
+        {" "}— A community Quran completion tracker
+      </footer>
 
       {/* ── MODAL ── */}
       {modal && modalSlot && (
@@ -459,7 +599,13 @@ export default function App() {
 
       {/* ── TOAST ── */}
       {toast && (
-        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#221c10",border:"1px solid rgba(201,168,76,0.4)",color:"#f0e2c0",padding:"10px 20px",borderRadius:20,fontFamily:"sans-serif",fontSize:13,zIndex:500,whiteSpace:"nowrap",animation:"toastIn 0.3s ease",pointerEvents:"none"}}>
+        <div style={{
+          position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",
+          background:"#2C2C2C",border:"none",color:"#FFF",
+          padding:"12px 24px",borderRadius:24,fontSize:14,fontWeight:500,
+          zIndex:500,whiteSpace:"nowrap",animation:"toastIn 0.3s ease",pointerEvents:"none",
+          boxShadow:"0 4px 16px rgba(0,0,0,0.15)"
+        }}>
           {toast}
         </div>
       )}
