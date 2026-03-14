@@ -56,12 +56,6 @@ function CompactToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () =>
           : "ctSlideIn 0.44s cubic-bezier(0.34,1.56,0.64,1) forwards",
       }}
     >
-      {/* Left accent */}
-      <div style={{
-        position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
-        background: "linear-gradient(180deg, #66BB6A, #2E7D32)",
-        borderRadius: "16px 0 0 16px",
-      }} />
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 14px 12px 16px" }}>
         {/* Check badge */}
