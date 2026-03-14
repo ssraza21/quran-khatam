@@ -17,6 +17,7 @@ export default function KhatamPage() {
     loading, modal, setModal,
     adminMode, adminSelected, setAdminSelected,
     adminPw, setAdminPw, adminErr,
+    newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onComplete,
     selectKhatam,
@@ -54,7 +55,7 @@ export default function KhatamPage() {
             {group === "brothers" ? "Brothers" : "Sisters"} Khatam
           </h1>
           <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
-            Khatam #{khatamNum}
+            {khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}
             {adminMode && (
               <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
                 ADMIN
@@ -178,20 +179,29 @@ export default function KhatamPage() {
                 ))}
               </div>
               <div className="flex flex-col gap-3 items-center">
-                <div className="flex gap-2 justify-center flex-wrap">
+                <div className="flex gap-2 justify-center flex-wrap items-center max-w-[400px] w-full">
+                  <input
+                    type="text"
+                    value={newKhatamName}
+                    onChange={e => setNewKhatamName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && startNewKhatam()}
+                    placeholder="Khatam name (optional)"
+                    maxLength={60}
+                    className="flex-1 min-w-[160px] bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
+                  />
                   <button
                     onClick={startNewKhatam}
-                    className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors"
+                    className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
                   >
                     + New Khatam
                   </button>
-                  <button
-                    onClick={deactivateAdmin}
-                    className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
-                  >
-                    Deactivate
-                  </button>
                 </div>
+                <button
+                  onClick={deactivateAdmin}
+                  className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
+                >
+                  Deactivate
+                </button>
                 <div className="flex gap-2 justify-center flex-wrap mt-1">
                   {adminSelected && (
                     <button

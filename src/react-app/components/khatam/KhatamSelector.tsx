@@ -86,7 +86,7 @@ export default function KhatamSelector({ khatams, selectedId, onSelect }: Khatam
                   <div className="flex flex-col items-start min-w-[60px]">
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[13px] font-semibold leading-tight ${isSelected ? "text-white" : ""}`}>
-                        Khatam {k.khatam_num}
+                        {k.name ?? `Khatam ${k.khatam_num}`}
                       </span>
                       {isLatest && !isSelected && (
                         <span className="text-[8px] font-bold uppercase tracking-wider bg-[#8B0000]/10 text-[#8B0000] px-1.5 py-0.5 rounded-full">

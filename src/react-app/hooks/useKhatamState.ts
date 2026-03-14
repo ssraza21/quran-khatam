@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 export interface KhatamInfo {
   id: number;
   khatam_num: number;
+  name: string | null;
   created_at: string;
   completed_at: string | null;
   done: number;
@@ -41,6 +42,7 @@ export function useKhatamState(group: GroupName = "brothers") {
   const [adminSelected, setAdminSelected] = useState<{ juz: number; q: number } | null>(null);
   const [adminPw, setAdminPw] = useState("");
   const [adminErr, setAdminErr] = useState("");
+  const [newKhatamName, setNewKhatamName] = useState("");
   const lastGroup = useRef(group);
 
   // Load all khatams with their completion counts
@@ -70,6 +72,7 @@ export function useKhatamState(group: GroupName = "brothers") {
       khatamInfos.push({
         id: k.id,
         khatam_num: k.khatam_num,
+        name: k.name ?? null,
         created_at: k.created_at,
         completed_at: k.completed_at,
         done: count ?? 0,
@@ -205,9 +208,10 @@ export function useKhatamState(group: GroupName = "brothers") {
 
   const startNewKhatam = async () => {
     const newNum = khatamNum + 1;
+    const trimmedName = newKhatamName.trim() || null;
     const { data: newKhatam, error: kErr } = await supabase
       .from("khatams")
-      .insert({ khatam_num: newNum, group_name: group })
+      .insert({ khatam_num: newNum, group_name: group, name: trimmedName })
       .select()
       .single();
 
@@ -229,7 +233,8 @@ export function useKhatamState(group: GroupName = "brothers") {
     }
 
     setAdminSelected(null);
-    toast(`Khatam ${newNum} has begun — Bismillah!`);
+    setNewKhatamName("");
+    toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${newNum} has begun — Bismillah!`);
     const infos = await loadKhatams();
     if (infos.length > 0) {
       setSelectedKhatamId(infos[0].id);
@@ -376,6 +381,7 @@ export function useKhatamState(group: GroupName = "brothers") {
     loading, modal, setModal,
     adminMode, adminSelected, setAdminSelected,
     adminPw, setAdminPw, adminErr,
+    newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onComplete,
     selectKhatam,
