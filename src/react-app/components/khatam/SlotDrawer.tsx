@@ -25,7 +25,7 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
 
   useEffect(() => {
     if (open && slot) {
-      setName(slot.by || "");
+      setName("");
       setErr("");
       setTimeout(() => inputRef.current?.focus(), 200);
     }
@@ -102,7 +102,7 @@ export default function SlotDrawer({ slot, juz, q, open, onClose, onBook, onComp
                 value={name}
                 onChange={e => setName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && doComplete()}
-                placeholder={slot.by || "Your name"}
+                placeholder="Your name"
                 className="w-full bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 rounded-lg text-[15px] outline-none focus:border-success focus:ring-2 focus:ring-success/10 transition-all mb-2"
               />
               {err && <p className="text-sm text-red-600 mb-2">{err}</p>}

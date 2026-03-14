@@ -36,50 +36,55 @@ export default function MetricsPage() {
   const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [khatamNum, setKhatamNum] = useState(1);
+  const [khatams, setKhatams] = useState<{ id: string; khatam_num: number }[]>([]);
+  const [selectedKhatamId, setSelectedKhatamId] = useState<string | null>(null);
 
-  const loadSlots = useCallback(async () => {
-    const { data: khatam } = await supabase
+  const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
+  const latestKhatamId = khatams.length > 0 ? khatams[khatams.length - 1].id : null;
+
+  const loadKhatams = useCallback(async () => {
+    const { data } = await supabase
       .from("khatams")
       .select("id, khatam_num")
       .eq("group_name", group)
-      .order("khatam_num", { ascending: false })
-      .limit(1)
-      .single();
-    if (!khatam) {
+      .order("khatam_num", { ascending: true });
+    if (data && data.length > 0) {
+      setKhatams(data);
+      setSelectedKhatamId(prev => prev ?? data[data.length - 1].id);
+    } else {
+      setKhatams([]);
       setSlots([]);
-      setKhatamNum(1);
-      return;
     }
+  }, [group]);
 
-    setKhatamNum(khatam.khatam_num);
-
+  const loadSlots = useCallback(async () => {
+    if (!selectedKhatamId) return;
     const { data } = await supabase
       .from("slots")
       .select("*")
-      .eq("khatam_id", khatam.id)
+      .eq("khatam_id", selectedKhatamId)
       .order("juz")
       .order("q");
-
     if (data) {
       setSlots(data.map((d: any) => ({
         juz: d.juz, q: d.q, status: d.status,
         by: d.claimed_by, at: d.claimed_at, done_at: d.done_at,
       })));
     }
-  }, [group]);
+  }, [selectedKhatamId]);
 
-  // Initial load
+  useEffect(() => { loadKhatams(); }, [loadKhatams]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  // Realtime subscription
+  // Realtime: refresh khatam list + slots on any change
   useEffect(() => {
     const channel = supabase
       .channel("metrics-realtime")
       .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "slots" }, () => { loadSlots(); })
+      .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "khatams" }, () => { loadKhatams(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [loadSlots]);
+  }, [loadSlots, loadKhatams]);
 
   // Auto-refresh time display
   useEffect(() => {
@@ -173,6 +178,37 @@ export default function MetricsPage() {
       {/* Stats Bar — matches KhatamPage style */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-5 py-4">
+
+          {/* Khatam switcher */}
+          {khatams.length > 1 && (
+            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium shrink-0 mr-1">Khatam</span>
+              {khatams.map(k => {
+                const isSelected = k.id === selectedKhatamId;
+                const isLatest = k.id === latestKhatamId;
+                return (
+                  <button
+                    key={k.id}
+                    onClick={() => setSelectedKhatamId(k.id)}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150"
+                    style={isSelected
+                      ? { background: "#8B0000", color: "#fff", boxShadow: "0 1px 4px rgba(139,0,0,0.25)" }
+                      : { background: "#F5F5F5", color: "#777" }
+                    }
+                  >
+                    #{k.khatam_num}
+                    {isLatest && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: isSelected ? "rgba(255,255,255,0.7)" : "#4CAF50" }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3 mb-3">
             {[
               { label: "Completed", val: done, color: "#2E7D32", bg: "#E8F5E9" },
@@ -209,12 +245,9 @@ export default function MetricsPage() {
                 <span className="text-6xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "#8B0000" }}>
                   {pct}
                 </span>
-                <span className="text-xs text-gray-400 -mt-1 uppercase tracking-wider">percent</span>
+                <span className="text-xs text-gray-400 mt-4 uppercase tracking-wider">percent</span>
               </div>
             </div>
-            <p className="mt-6 text-gray-300" style={{ fontFamily: "'Amiri', serif", fontSize: 20 }}>
-              &#1576;&#1587;&#1605; &#1575;&#1604;&#1604;&#1607;
-            </p>
           </div>
 
           {/* Juz Completion Heatmap */}
@@ -270,11 +303,11 @@ export default function MetricsPage() {
                 },
               ].map(l => (
                 <div key={l.label} className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-md overflow-hidden relative shrink-0"
-                    style={{ border: "1px solid #E0E0E0", background: "#FAFAFA" }}>
-                    <div className="grid grid-cols-2 h-full gap-px bg-white p-px">
+                  <div className="w-5 h-5 rounded-md overflow-hidden shrink-0"
+                    style={{ border: "1.5px solid #D8D8D8" }}>
+                    <div className="grid grid-cols-2 w-full h-full gap-px bg-white">
                       {l.quarters.map((s, i) => (
-                        <div key={i} className="rounded-[2px]" style={{ background: quarterColor(s) }} />
+                        <div key={i} style={{ background: quarterColor(s) }} />
                       ))}
                     </div>
                   </div>
@@ -294,9 +327,9 @@ export default function MetricsPage() {
                 {leaderboard.slice(0, 8).map((p, i) => (
                   <div key={p.name} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? "bg-amber-100 text-amber-700" :
-                        i === 1 ? "bg-gray-100 text-gray-500" :
-                          i === 2 ? "bg-orange-100 text-orange-600" :
-                            "bg-gray-50 text-gray-400"
+                      i === 1 ? "bg-gray-100 text-gray-500" :
+                        i === 2 ? "bg-orange-100 text-orange-600" :
+                          "bg-gray-50 text-gray-400"
                       }`}>
                       {i + 1}
                     </div>
