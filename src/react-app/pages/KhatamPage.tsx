@@ -21,6 +21,7 @@ export default function KhatamPage() {
     getSlot, onBook, onComplete,
     selectKhatam,
     startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
+    adminResetAllToAvailable, adminResetJuzToAvailable,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -176,15 +177,37 @@ export default function KhatamPage() {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2 justify-center flex-wrap">
-                <button onClick={startNewKhatam}
-                  className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors">
-                  + New Khatam
-                </button>
-                <button onClick={deactivateAdmin}
-                  className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors">
-                  Deactivate
-                </button>
+              <div className="flex flex-col gap-3 items-center">
+                <div className="flex gap-2 justify-center flex-wrap">
+                  <button
+                    onClick={startNewKhatam}
+                    className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors"
+                  >
+                    + New Khatam
+                  </button>
+                  <button
+                    onClick={deactivateAdmin}
+                    className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
+                  >
+                    Deactivate
+                  </button>
+                </div>
+                <div className="flex gap-2 justify-center flex-wrap mt-1">
+                  {adminSelected && (
+                    <button
+                      onClick={adminResetJuzToAvailable}
+                      className="bg-white/10 border border-white/30 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors font-medium"
+                    >
+                      Reset Juz {adminSelected.juz} to Available
+                    </button>
+                  )}
+                  <button
+                    onClick={adminResetAllToAvailable}
+                    className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
+                  >
+                    Reset Entire Khatam to Available
+                  </button>
+                </div>
               </div>
             </div>
           )}

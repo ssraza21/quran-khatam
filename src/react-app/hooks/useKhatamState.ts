@@ -251,8 +251,8 @@ export function useKhatamState(group: GroupName = "brothers") {
     const updates = st === "av"
       ? { status: "av" as const, claimed_by: null, claimed_at: null, done_at: null }
       : st === "cl"
-      ? { status: "cl" as const, claimed_by: slot.by || "Admin", claimed_at: new Date().toISOString() }
-      : { status: "dn" as const, claimed_by: slot.by || "Admin", done_at: new Date().toISOString() };
+        ? { status: "cl" as const, claimed_by: slot.by || "Admin", claimed_at: new Date().toISOString() }
+        : { status: "dn" as const, claimed_by: slot.by || "Admin", done_at: new Date().toISOString() };
 
     const { error } = await supabase
       .from("slots")
@@ -277,6 +277,58 @@ export function useKhatamState(group: GroupName = "brothers") {
     toast("Admin mode off");
   };
 
+  const adminResetAllToAvailable = async () => {
+    if (!selectedKhatamId) return;
+    const confirmed = window.confirm("Reset ALL quarters in this khatam to Available? This cannot be undone.");
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("slots")
+      .update({
+        status: "av",
+        claimed_by: null,
+        claimed_at: null,
+        done_at: null,
+      })
+      .eq("khatam_id", selectedKhatamId);
+
+    if (error) {
+      toast.error("Failed to reset slots to available");
+      return;
+    }
+
+    toast.success("All quarters reset to Available");
+    await loadSlots(selectedKhatamId);
+    await loadKhatams();
+  };
+
+  const adminResetJuzToAvailable = async () => {
+    if (!selectedKhatamId || !adminSelected) return;
+    const { juz } = adminSelected;
+    const confirmed = window.confirm(`Reset all quarters in Juz ${juz} to Available?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("slots")
+      .update({
+        status: "av",
+        claimed_by: null,
+        claimed_at: null,
+        done_at: null,
+      })
+      .eq("khatam_id", selectedKhatamId)
+      .eq("juz", juz);
+
+    if (error) {
+      toast.error("Failed to reset Juz to available");
+      return;
+    }
+
+    toast.success(`All quarters in Juz ${juz} reset to Available`);
+    await loadSlots(selectedKhatamId);
+    await loadKhatams();
+  };
+
   return {
     group, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, modal, setModal,
@@ -286,5 +338,6 @@ export function useKhatamState(group: GroupName = "brothers") {
     getSlot, onBook, onComplete,
     selectKhatam,
     startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
+    adminResetAllToAvailable, adminResetJuzToAvailable,
   };
 }
