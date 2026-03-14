@@ -29,6 +29,38 @@ function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; s
 
 type GroupName = "brothers" | "sisters";
 
+interface DbSlot {
+  khatam_id: string | number;
+  juz: number;
+  q: number;
+  status: StatusKey;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  done_at: string | null;
+}
+
+function dbToSlot(d: DbSlot): Slot {
+  return {
+    juz: d.juz,
+    q: d.q,
+    status: d.status,
+    by: d.claimed_by,
+    at: d.claimed_at,
+    done_at: d.done_at,
+  };
+}
+
+function upsertSlot(prev: Slot[], next: Slot) {
+  const existingIndex = prev.findIndex(s => s.juz === next.juz && s.q === next.q);
+  if (existingIndex === -1) {
+    return [...prev, next].sort((a, b) => a.juz - b.juz || a.q - b.q);
+  }
+
+  const updated = [...prev];
+  updated[existingIndex] = next;
+  return updated;
+}
+
 export default function MetricsPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -36,8 +68,8 @@ export default function MetricsPage() {
   const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [khatams, setKhatams] = useState<{ id: string; khatam_num: number }[]>([]);
-  const [selectedKhatamId, setSelectedKhatamId] = useState<string | null>(null);
+  const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number }[]>([]);
+  const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
 
   const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
   const latestKhatamId = khatams.length > 0 ? khatams[khatams.length - 1].id : null;
@@ -49,13 +81,23 @@ export default function MetricsPage() {
       .eq("group_name", group)
       .order("khatam_num", { ascending: true });
     if (data && data.length > 0) {
+      const newestKhatamId = data[data.length - 1].id;
       setKhatams(data);
-      setSelectedKhatamId(prev => prev ?? data[data.length - 1].id);
+      setSelectedKhatamId(prev => {
+        if (prev == null) return newestKhatamId;
+
+        const stillExists = data.some(k => k.id === prev);
+        if (!stillExists) return newestKhatamId;
+
+        // Keep following the newest khatam unless the user explicitly switched away.
+        return prev === latestKhatamId ? newestKhatamId : prev;
+      });
     } else {
       setKhatams([]);
+      setSelectedKhatamId(null);
       setSlots([]);
     }
-  }, [group]);
+  }, [group, latestKhatamId]);
 
   const loadSlots = useCallback(async () => {
     if (!selectedKhatamId) return;
@@ -66,25 +108,49 @@ export default function MetricsPage() {
       .order("juz")
       .order("q");
     if (data) {
-      setSlots(data.map((d: any) => ({
-        juz: d.juz, q: d.q, status: d.status,
-        by: d.claimed_by, at: d.claimed_at, done_at: d.done_at,
-      })));
+      setSlots((data as DbSlot[]).map(dbToSlot));
     }
   }, [selectedKhatamId]);
 
   useEffect(() => { loadKhatams(); }, [loadKhatams]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  // Realtime: refresh khatam list + slots on any change
+  // Realtime: refresh the khatam list for this group.
   useEffect(() => {
     const channel = supabase
-      .channel("metrics-realtime")
-      .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "slots" }, () => { loadSlots(); })
-      .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "khatams" }, () => { loadKhatams(); })
+      .channel(`metrics-khatams-${group}`)
+      .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "khatams", filter: `group_name=eq.${group}` }, () => {
+        loadKhatams();
+      })
       .subscribe();
+
     return () => { supabase.removeChannel(channel); };
-  }, [loadSlots, loadKhatams]);
+  }, [group, loadKhatams]);
+
+  // Realtime: apply slot changes immediately for the selected khatam.
+  useEffect(() => {
+    if (!selectedKhatamId) return;
+
+    const channel = supabase
+      .channel(`metrics-slots-${selectedKhatamId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "qurankhatam", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
+        (payload: any) => {
+          if (payload.eventType === "DELETE") {
+            const oldRow = payload.old as DbSlot;
+            setSlots(prev => prev.filter(s => !(s.juz === oldRow.juz && s.q === oldRow.q)));
+            return;
+          }
+
+          const row = payload.new as DbSlot;
+          setSlots(prev => upsertSlot(prev, dbToSlot(row)));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedKhatamId]);
 
   // Auto-refresh time display
   useEffect(() => {

@@ -30,7 +30,6 @@ export default function Navbar() {
       <div className="container mx-auto flex h-16 max-w-screen-xl items-center justify-between px-4 md:px-8">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-3 group">
-
           <span className="text-lg font-semibold tracking-tight text-foreground" style={{ fontFamily: "'Playfair Display', serif" }}>
             Quran Khatam
           </span>
@@ -67,11 +66,6 @@ export default function Navbar() {
             <DrawerContent className="h-full w-[300px] rounded-l-2xl border-l outline-none">
               <DrawerHeader className="border-b pb-4 pt-6 px-6">
                 <DrawerTitle className="flex items-center gap-2">
-                  <img
-                    src="/qurankhatam-logo.png"
-                    alt="Quran Khatam Logo"
-                    className="h-8 w-8 object-contain"
-                  />
                   <span style={{ fontFamily: "'Playfair Display', serif" }}>Quran Khatam</span>
                 </DrawerTitle>
                 <DrawerDescription className="sr-only">
