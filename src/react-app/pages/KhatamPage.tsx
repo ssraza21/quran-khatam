@@ -21,7 +21,7 @@ export default function KhatamPage() {
     getSlot, onBook, onComplete,
     selectKhatam,
     startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
-    adminResetAllToAvailable, adminResetJuzToAvailable,
+    adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -206,6 +206,12 @@ export default function KhatamPage() {
                     className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
                   >
                     Reset Entire Khatam to Available
+                  </button>
+                  <button
+                    onClick={adminDeleteKhatam}
+                    className="bg-black/60 border border-red-400/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-black/80 transition-colors font-semibold"
+                  >
+                    Delete This Khatam
                   </button>
                 </div>
               </div>

@@ -329,6 +329,48 @@ export function useKhatamState(group: GroupName = "brothers") {
     await loadKhatams();
   };
 
+  const adminDeleteKhatam = async () => {
+    if (!selectedKhatamId) return;
+    const confirmed = window.confirm(
+      `Permanently delete Khatam #${khatamNum} and all its slots? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const { error: slotsErr } = await supabase
+      .from("slots")
+      .delete()
+      .eq("khatam_id", selectedKhatamId);
+
+    if (slotsErr) {
+      toast.error("Failed to delete khatam slots");
+      return;
+    }
+
+    const { error: khatamErr } = await supabase
+      .from("khatams")
+      .delete()
+      .eq("id", selectedKhatamId);
+
+    if (khatamErr) {
+      toast.error("Failed to delete khatam");
+      return;
+    }
+
+    setAdminSelected(null);
+    setModal(null);
+    toast.success(`Khatam #${khatamNum} deleted`);
+    const infos = await loadKhatams();
+    if (infos.length > 0) {
+      setSelectedKhatamId(infos[0].id);
+      setKhatamNum(infos[0].khatam_num);
+      await loadSlots(infos[0].id);
+    } else {
+      setSlots([]);
+      setSelectedKhatamId(null);
+      setKhatamNum(1);
+    }
+  };
+
   return {
     group, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, modal, setModal,
@@ -338,6 +380,6 @@ export function useKhatamState(group: GroupName = "brothers") {
     getSlot, onBook, onComplete,
     selectKhatam,
     startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
-    adminResetAllToAvailable, adminResetJuzToAvailable,
+    adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
   };
 }
