@@ -59,7 +59,7 @@ export default function LandingPage() {
             Complete the Quran Together
           </h2>
           <p className="text-lg text-gray-500 leading-relaxed max-w-[700px] mx-auto">
-            Khatm al-Quran is a beautiful tradition where community members divide the 30 Juz (sections) of the
+            The Quran Khatam is a beautiful tradition where community members divide the 30 Juz (sections) of the
             Quran among themselves, each reading their assigned portion. Together, the entire Quran is completed
             as a collective act of worship — strengthening bonds and earning shared reward.
           </p>
@@ -124,6 +124,15 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="py-6 text-center text-sm text-gray-400 bg-[#1a0000]">
+        Made with ❤️ by{" "}
+        <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer"
+          className="text-white/70 hover:text-white transition-colors duration-200 underline underline-offset-2">
+          Shahrukh
+        </a>
+      </footer>
     </>
   );
 }

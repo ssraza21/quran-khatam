@@ -475,6 +475,15 @@ export default function MetricsPage() {
 
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="py-6 text-center text-sm text-gray-400 border-t border-gray-100 mt-4">
+        Made with ❤️ by{" "}
+        <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer"
+          className="text-gray-600 hover:text-[#8B0000] transition-colors duration-200 underline underline-offset-2">
+          Shahrukh
+        </a>
+      </footer>
     </div>
   );
 }

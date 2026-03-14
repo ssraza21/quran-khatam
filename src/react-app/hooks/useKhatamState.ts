@@ -109,10 +109,12 @@ export function useKhatamState(group: GroupName = "brothers") {
       if (isGroupChange) setLoading(true);
       const infos = await loadKhatams();
       if (infos.length > 0) {
-        const latest = infos[0]; // already sorted desc
-        setSelectedKhatamId(latest.id);
-        setKhatamNum(latest.khatam_num);
-        await loadSlots(latest.id);
+        const storedId = localStorage.getItem(`selectedKhatamId:${group}`);
+        const remembered = storedId ? infos.find(k => k.id === Number(storedId)) : null;
+        const target = remembered ?? infos[0];
+        setSelectedKhatamId(target.id);
+        setKhatamNum(target.khatam_num);
+        await loadSlots(target.id);
       } else {
         setSlots([]);
         setKhatams([]);
@@ -126,6 +128,7 @@ export function useKhatamState(group: GroupName = "brothers") {
   const selectKhatam = useCallback(async (khatamId: number) => {
     const info = khatams.find(k => k.id === khatamId);
     if (!info) return;
+    localStorage.setItem(`selectedKhatamId:${group}`, String(khatamId));
     setSelectedKhatamId(khatamId);
     setKhatamNum(info.khatam_num);
     setAdminSelected(null);
@@ -133,7 +136,7 @@ export function useKhatamState(group: GroupName = "brothers") {
     setLoading(true);
     await loadSlots(khatamId);
     setLoading(false);
-  }, [khatams, loadSlots]);
+  }, [group, khatams, loadSlots]);
 
   // Realtime subscription — follows selectedKhatamId
   useEffect(() => {
