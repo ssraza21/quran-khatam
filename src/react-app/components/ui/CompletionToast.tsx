@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { supabasePublic } from "@/lib/supabase";
 import { JUZ_NAMES, Q_SHORT } from "@/lib/constants";
 
