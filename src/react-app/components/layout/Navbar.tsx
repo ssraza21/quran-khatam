@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { Menu, Home, Activity, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,13 +15,21 @@ import { cn } from "@/lib/utils";
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const { slug } = useParams<{ slug?: string }>();
   const [open, setOpen] = useState(false);
 
-  const navItems = [
+  const baseItems = [
     { name: "Home", path: "/", icon: Home },
-    { name: "Tracker", path: "/khatam", icon: Activity },
-    { name: "Metrics", path: "/metrics", icon: BarChart2 },
   ];
+
+  // Add contextual links when viewing a khatam
+  const navItems = slug
+    ? [
+        ...baseItems,
+        { name: "Tracker", path: `/k/${slug}`, icon: Activity },
+        { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
+      ]
+    : baseItems;
 
   const isActive = (path: string) => pathname === path;
 

@@ -17,3 +17,12 @@ export interface StatusColor {
   accentBg: string;
   label: string;
 }
+
+export interface KhatamPublic {
+  id: number;
+  slug: string;
+  name: string;
+  khatam_num: number;
+  created_at: string;
+  completed_at: string | null;
+}

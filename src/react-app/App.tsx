@@ -11,10 +11,12 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/khatam" element={<Navigate to="/khatam/brothers" replace />} />
-          <Route path="/khatam/:group" element={<KhatamPage />} />
+          <Route path="/k/:slug" element={<KhatamPage />} />
+          <Route path="/k/:slug/metrics" element={<MetricsPage />} />
         </Route>
-        <Route path="/metrics" element={<MetricsPage />} />
+        {/* Redirect old routes */}
+        <Route path="/khatam/*" element={<Navigate to="/" replace />} />
+        <Route path="/metrics" element={<Navigate to="/" replace />} />
       </Routes>
     </CompletionToastProvider>
   );

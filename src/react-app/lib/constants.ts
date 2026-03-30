@@ -11,7 +11,6 @@ export const JUZ_NAMES = [
 
 export const Q_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 export const Q_SHORT = ["Q1", "Q2", "Q3", "Q4"];
-export const ADMIN_PW = "quran2025";
 
 export const COLORS: Record<StatusKey, StatusColor> = {
   av: { bg: "#FFFFFF", border: "#E0E0E0", text: "#4A4A4A", accent: "#8B0000", accentBg: "#FFF5F5", label: "Available" },

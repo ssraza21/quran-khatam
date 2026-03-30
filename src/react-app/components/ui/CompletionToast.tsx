@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { useLocation, useParams } from "react-router-dom";
+import { supabasePublic } from "@/lib/supabase";
 import { JUZ_NAMES, Q_SHORT } from "@/lib/constants";
 
 interface ToastData {
@@ -9,7 +9,6 @@ interface ToastData {
   juz: number;
   juzName: string;
   q: number;
-  group: string;
 }
 
 const ToastContext = createContext<Record<string, never>>({});
@@ -72,8 +71,6 @@ function CompactToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () =>
     }
   };
 
-  const isBrothers = toast.group === "brothers";
-
   return (
     <div
       onTouchStart={handleTouchStart}
@@ -121,15 +118,6 @@ function CompactToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () =>
                 whiteSpace: "nowrap", textOverflow: "ellipsis",
               }}>
                 {toast.name}
-              </span>
-              <span style={{
-                fontSize: 9, fontWeight: 600, letterSpacing: "0.08em",
-                textTransform: "uppercase", flexShrink: 0,
-                padding: "2px 7px", borderRadius: 100,
-                background: isBrothers ? "#EFF6FF" : "#FDF4FF",
-                color: isBrothers ? "#1D4ED8" : "#7C3AED",
-              }}>
-                {toast.group}
               </span>
             </div>
             <p style={{ margin: 0, fontSize: 12, color: "#6B7280", lineHeight: 1.4 }}>
@@ -210,8 +198,6 @@ function ProminentToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () 
     }
   };
 
-  const isBrothers = toast.group === "brothers";
-
   return (
     <div
       onTouchStart={handleTouchStart}
@@ -270,15 +256,6 @@ function ProminentToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () 
                 }}>
                   {toast.name}
                 </span>
-                <span style={{
-                  fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase",
-                  padding: "3px 9px", borderRadius: 100, flexShrink: 0,
-                  background: isBrothers ? "rgba(96,165,250,0.25)" : "rgba(240,171,252,0.25)",
-                  color: "rgba(255,255,255,0.9)",
-                  border: `1px solid ${isBrothers ? "rgba(96,165,250,0.35)" : "rgba(240,171,252,0.35)"}`,
-                }}>
-                  {toast.group}
-                </span>
               </div>
               <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.5 }}>
                 Completed{" "}
@@ -329,40 +306,31 @@ function ProminentToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () 
 
 export function CompletionToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
-  const [khatamGroupMap, setKhatamGroupMap] = useState<Record<string, string>>({});
   const location = useLocation();
-  const isMetrics = location.pathname.startsWith("/metrics");
+  const isMetrics = location.pathname.includes("/metrics");
   const seenKeys = useRef(new Set<string>());
 
-  // Build khatam_id → group_name lookup
-  useEffect(() => {
-    supabase
-      .from("khatams")
-      .select("id, group_name")
-      .then(({ data }) => {
-        if (data) {
-          const map: Record<string, string> = {};
-          data.forEach((k: { id: string; group_name: string }) => { map[k.id] = k.group_name; });
-          setKhatamGroupMap(map);
-        }
-      });
-  }, []);
+  // Extract slug from the current URL
+  const slugMatch = location.pathname.match(/^\/k\/([^/]+)/);
+  const currentSlug = slugMatch?.[1] ?? null;
 
   const dismiss = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  // Subscribe to slot completions for the current khatam's slug
   useEffect(() => {
-    const channel = supabase
-      .channel("completion-toasts-global")
+    if (!currentSlug) return;
+
+    const channel = supabasePublic
+      .channel(`completion-toasts-${currentSlug}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "qurankhatam", table: "slots" },
+        { event: "UPDATE", schema: "khatam_public", table: "slots" },
         (payload: any) => {
           const row = payload.new;
           if (row.status !== "dn") return;
 
-          // Deduplicate: same juz+q+claimer+done_at
           const key = `${row.juz}-${row.q}-${row.claimed_by ?? "anon"}-${row.done_at ?? row.claimed_at}`;
           if (seenKeys.current.has(key)) return;
           seenKeys.current.add(key);
@@ -373,7 +341,6 @@ export function CompletionToastProvider({ children }: { children: React.ReactNod
             juz: row.juz,
             juzName: JUZ_NAMES[row.juz - 1] ?? "",
             q: row.q,
-            group: khatamGroupMap[row.khatam_id] ?? "brothers",
           };
 
           setToasts(prev => [toast, ...prev].slice(0, 2));
@@ -381,8 +348,8 @@ export function CompletionToastProvider({ children }: { children: React.ReactNod
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [khatamGroupMap]);
+    return () => { supabasePublic.removeChannel(channel); };
+  }, [currentSlug]);
 
   return (
     <ToastContext.Provider value={{}}>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import type { Slot, StatusKey } from "@/lib/types";
 import { JUZ_NAMES, COLORS } from "@/lib/constants";
-import { supabase } from "@/lib/supabase";
+import { supabasePublic } from "@/lib/supabase";
 
 function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; size?: number; stroke?: number }) {
   const radius = (size - stroke) / 2;
@@ -26,8 +26,6 @@ function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; s
     </svg>
   );
 }
-
-type GroupName = "brothers" | "sisters";
 
 interface DbSlot {
   khatam_id: string | number;
@@ -62,46 +60,45 @@ function upsertSlot(prev: Slot[], next: Slot) {
 }
 
 export default function MetricsPage() {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const groupParam = searchParams.get("group");
-  const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
+  const { slug } = useParams<{ slug: string }>();
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number; name: string | null }[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
+  const [khatamName, setKhatamName] = useState("");
+  const [notFound, setNotFound] = useState(false);
 
   const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
   const latestKhatamId = khatams.length > 0 ? khatams[khatams.length - 1].id : null;
 
   const loadKhatams = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await supabasePublic
       .from("khatams")
       .select("id, khatam_num, name")
-      .eq("group_name", group)
+      .eq("slug", slug ?? "")
       .order("khatam_num", { ascending: true });
     if (data && data.length > 0) {
       const newestKhatamId = data[data.length - 1].id;
       setKhatams(data);
+      setKhatamName(data[data.length - 1].name ?? "");
+      setNotFound(false);
       setSelectedKhatamId(prev => {
         if (prev == null) return newestKhatamId;
-
         const stillExists = data.some(k => k.id === prev);
         if (!stillExists) return newestKhatamId;
-
-        // Keep following the newest khatam unless the user explicitly switched away.
         return prev === latestKhatamId ? newestKhatamId : prev;
       });
     } else {
       setKhatams([]);
       setSelectedKhatamId(null);
       setSlots([]);
+      setNotFound(true);
     }
-  }, [group, latestKhatamId]);
+  }, [slug, latestKhatamId]);
 
   const loadSlots = useCallback(async () => {
     if (!selectedKhatamId) return;
-    const { data } = await supabase
+    const { data } = await supabasePublic
       .from("slots")
       .select("*")
       .eq("khatam_id", selectedKhatamId)
@@ -115,27 +112,28 @@ export default function MetricsPage() {
   useEffect(() => { loadKhatams(); }, [loadKhatams]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  // Realtime: refresh the khatam list for this group.
+  // Realtime: refresh the khatam list
   useEffect(() => {
-    const channel = supabase
-      .channel(`metrics-khatams-${group}`)
-      .on("postgres_changes", { event: "*", schema: "qurankhatam", table: "khatams", filter: `group_name=eq.${group}` }, () => {
+    if (!slug) return;
+    const channel = supabasePublic
+      .channel(`metrics-khatams-${slug}`)
+      .on("postgres_changes", { event: "*", schema: "khatam_public", table: "khatams" }, () => {
         loadKhatams();
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [group, loadKhatams]);
+    return () => { supabasePublic.removeChannel(channel); };
+  }, [slug, loadKhatams]);
 
-  // Realtime: apply slot changes immediately for the selected khatam.
+  // Realtime: apply slot changes immediately
   useEffect(() => {
     if (!selectedKhatamId) return;
 
-    const channel = supabase
+    const channel = supabasePublic
       .channel(`metrics-slots-${selectedKhatamId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "qurankhatam", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
+        { event: "*", schema: "khatam_public", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
         (payload: any) => {
           if (payload.eventType === "DELETE") {
             const oldRow = payload.old as DbSlot;
@@ -149,10 +147,9 @@ export default function MetricsPage() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabasePublic.removeChannel(channel); };
   }, [selectedKhatamId]);
 
-  // Auto-refresh time display
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -163,7 +160,6 @@ export default function MetricsPage() {
   const rem = 120 - done - prog;
   const pct = Math.round((done / 120) * 100);
 
-  // Juz completion data for heatmap
   const juzData = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => {
       const juz = i + 1;
@@ -178,7 +174,6 @@ export default function MetricsPage() {
     });
   }, [slots]);
 
-  // Participant leaderboard
   const leaderboard = useMemo(() => {
     const counts: Record<string, { completed: number; inProgress: number }> = {};
     slots.forEach(s => {
@@ -193,7 +188,6 @@ export default function MetricsPage() {
       .sort((a, b) => b.completed - a.completed || b.inProgress - a.inProgress);
   }, [slots]);
 
-  // Recent activity (completed slots, sorted by time)
   const recentActivity = useMemo(() => {
     return slots
       .filter(s => s.done_at || s.at)
@@ -211,12 +205,28 @@ export default function MetricsPage() {
     return "#EEEEEE";
   };
 
+  if (notFound) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
+            Khatam Not Found
+          </h2>
+          <p className="text-gray-500 text-sm mb-6">No khatam exists with the slug "{slug}".</p>
+          <Link to="/"
+            className="bg-[#8B0000] text-white px-6 py-2.5 rounded-full text-sm font-semibold no-underline hover:bg-[#6B0000] transition-colors">
+            Go Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-bg-light">
-      {/* Hero Header — matches KhatamPage */}
+    <>
+      {/* Hero Header */}
       <header className="relative overflow-hidden text-white text-center py-10 px-5"
         style={{ background: "linear-gradient(135deg, #8B0000 0%, #5A0000 100%)" }}>
-        {/* Islamic geometric pattern overlay */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Cpath d='M40 0l40 40-40 40L0 40z' fill-opacity='0.15'/%3E%3Cpath d='M40 10l30 30-30 30L10 40z' fill='none' stroke='%23fff' stroke-opacity='0.1'/%3E%3C/g%3E%3C/svg%3E")`
@@ -225,7 +235,7 @@ export default function MetricsPage() {
         <div className="relative max-w-[1200px] mx-auto">
           <h1 className="text-[42px] mb-1 font-normal tracking-widest text-white"
             style={{ fontFamily: "'Playfair Display', serif" }}>
-            {group === "brothers" ? "Brothers" : "Sisters"} Live Metrics
+            {khatamName || "Khatam"} Live Metrics
           </h1>
 
           <div className="inline-flex items-center gap-3 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
@@ -238,10 +248,19 @@ export default function MetricsPage() {
               </span>
             </div>
           </div>
+
+          <div className="mt-3">
+            <Link
+              to={`/k/${slug}`}
+              className="text-white/60 text-sm no-underline hover:text-white/80 transition-colors"
+            >
+              &larr; Back to Tracker
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Stats Bar — matches KhatamPage style */}
+      {/* Stats Bar */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-5 py-4">
 
@@ -322,10 +341,8 @@ export default function MetricsPage() {
             <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
               {juzData.map(j => (
                 <div key={j.juz} className="group relative flex flex-col items-center gap-1">
-                  {/* Quarter-fill cell — number lives below, not overlaid */}
                   <div className="w-full aspect-square rounded-xl overflow-hidden transition-all duration-200 hover:scale-110 hover:shadow-lg cursor-default"
                     style={{ border: "1.5px solid #D8D8D8" }}>
-                    {/* 1px white cross-hair between quadrants via gap-px + bg-white */}
                     <div className="grid grid-cols-2 w-full h-full gap-px bg-white">
                       {j.quarters.map((status, qi) => (
                         <div
@@ -339,7 +356,6 @@ export default function MetricsPage() {
                   <span className="text-[10px] font-semibold leading-none text-gray-400 tabular-nums">
                     {j.juz}
                   </span>
-                  {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-3 py-1.5 bg-text-heading text-white rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
                     <span className="font-semibold">Juz {j.juz}</span>
                     <span className="text-white/60 ml-1" style={{ fontFamily: "'Amiri', serif" }}>{j.name}</span>
@@ -351,22 +367,10 @@ export default function MetricsPage() {
             </div>
             <div className="flex items-center gap-5 mt-5 pt-4 border-t border-gray-100">
               {[
-                {
-                  quarters: ["av", "av", "av", "av"],
-                  label: "None",
-                },
-                {
-                  quarters: ["cl", "av", "av", "av"],
-                  label: "In progress",
-                },
-                {
-                  quarters: ["dn", "av", "av", "av"],
-                  label: "1 done",
-                },
-                {
-                  quarters: ["dn", "dn", "dn", "dn"],
-                  label: "Complete",
-                },
+                { quarters: ["av", "av", "av", "av"], label: "None" },
+                { quarters: ["cl", "av", "av", "av"], label: "In progress" },
+                { quarters: ["dn", "av", "av", "av"], label: "1 done" },
+                { quarters: ["dn", "dn", "dn", "dn"], label: "Complete" },
               ].map(l => (
                 <div key={l.label} className="flex items-center gap-1.5">
                   <div className="w-5 h-5 rounded-md overflow-hidden shrink-0"
@@ -475,15 +479,6 @@ export default function MetricsPage() {
 
         </div>
       </div>
-
-      {/* Footer */}
-      <footer className="py-6 text-center text-sm text-gray-400 border-t border-gray-100 mt-4">
-        Made with ❤️ by{" "}
-        <a href="https://ssraza.com" target="_blank" rel="noopener noreferrer"
-          className="text-gray-600 hover:text-[#8B0000] transition-colors duration-200 underline underline-offset-2">
-          Shahrukh
-        </a>
-      </footer>
-    </div>
+    </>
   );
 }

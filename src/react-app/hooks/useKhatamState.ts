@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import type { Slot, StatusKey } from "@/lib/types";
-import { Q_SHORT, COLORS, ADMIN_PW } from "@/lib/constants";
-import { supabase } from "@/lib/supabase";
+import { Q_SHORT, COLORS } from "@/lib/constants";
+import { supabasePublic } from "@/lib/supabase";
+import { api } from "@/lib/api";
 
 export interface KhatamInfo {
   id: number;
+  slug: string;
   khatam_num: number;
   name: string | null;
   created_at: string;
@@ -29,48 +31,53 @@ function dbToSlot(d: DbSlot): Slot {
   return { juz: d.juz, q: d.q, status: d.status, by: d.claimed_by, at: d.claimed_at, done_at: d.done_at };
 }
 
-export type GroupName = "brothers" | "sisters";
-
-export function useKhatamState(group: GroupName = "brothers") {
+export function useKhatamState(slug: string) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [khatams, setKhatams] = useState<KhatamInfo[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<number | null>(null);
   const [khatamNum, setKhatamNum] = useState(1);
+  const [khatamName, setKhatamName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [modal, setModal] = useState<{ juz: number; q: number } | null>(null);
   const [adminMode, setAdminMode] = useState(false);
   const [adminSelected, setAdminSelected] = useState<{ juz: number; q: number } | null>(null);
-  const [adminPw, setAdminPw] = useState("");
+  const [adminPin, setAdminPin] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [newKhatamName, setNewKhatamName] = useState("");
-  const lastGroup = useRef(group);
+  const lastSlug = useRef(slug);
 
   // Load all khatams with their completion counts
   const loadKhatams = useCallback(async (): Promise<KhatamInfo[]> => {
-    const { data: allKhatams, error } = await supabase
+    const { data: allKhatams, error } = await supabasePublic
       .from("khatams")
       .select("*")
-      .eq("group_name", group)
+      .eq("slug", slug)
       .order("khatam_num", { ascending: false });
 
-    if (error || !allKhatams || allKhatams.length === 0) return [];
+    if (error || !allKhatams || allKhatams.length === 0) {
+      setNotFound(true);
+      return [];
+    }
 
-    // Get completion counts for each khatam
+    setNotFound(false);
+
     const khatamInfos: KhatamInfo[] = [];
     for (const k of allKhatams) {
-      const { count } = await supabase
+      const { count } = await supabasePublic
         .from("slots")
         .select("*", { count: "exact", head: true })
         .eq("khatam_id", k.id)
         .eq("status", "dn");
 
-      const { count: totalCount } = await supabase
+      const { count: totalCount } = await supabasePublic
         .from("slots")
         .select("*", { count: "exact", head: true })
         .eq("khatam_id", k.id);
 
       khatamInfos.push({
         id: k.id,
+        slug: k.slug,
         khatam_num: k.khatam_num,
         name: k.name ?? null,
         created_at: k.created_at,
@@ -81,12 +88,15 @@ export function useKhatamState(group: GroupName = "brothers") {
     }
 
     setKhatams(khatamInfos);
+    if (khatamInfos.length > 0) {
+      setKhatamName(khatamInfos[0].name ?? "");
+    }
     return khatamInfos;
-  }, [group]);
+  }, [slug]);
 
   // Load slots for a specific khatam
   const loadSlots = useCallback(async (khatamId: number) => {
-    const { data: dbSlots, error } = await supabase
+    const { data: dbSlots, error } = await supabasePublic
       .from("slots")
       .select("*")
       .eq("khatam_id", khatamId)
@@ -100,16 +110,20 @@ export function useKhatamState(group: GroupName = "brothers") {
     }
   }, []);
 
-  // Initial load + reload when group changes
+  // Initial load + reload when slug changes
   useEffect(() => {
-    const isGroupChange = lastGroup.current !== group;
-    lastGroup.current = group;
+    const isSlugChange = lastSlug.current !== slug;
+    lastSlug.current = slug;
 
     (async () => {
-      if (isGroupChange) setLoading(true);
+      if (isSlugChange) {
+        setLoading(true);
+        setAdminMode(false);
+        setAdminPin("");
+      }
       const infos = await loadKhatams();
       if (infos.length > 0) {
-        const storedId = localStorage.getItem(`selectedKhatamId:${group}`);
+        const storedId = localStorage.getItem(`selectedKhatamId:${slug}`);
         const remembered = storedId ? infos.find(k => k.id === Number(storedId)) : null;
         const target = remembered ?? infos[0];
         setSelectedKhatamId(target.id);
@@ -122,13 +136,13 @@ export function useKhatamState(group: GroupName = "brothers") {
       }
       setLoading(false);
     })();
-  }, [group, loadKhatams, loadSlots]);
+  }, [slug, loadKhatams, loadSlots]);
 
   // When user switches khatam
   const selectKhatam = useCallback(async (khatamId: number) => {
     const info = khatams.find(k => k.id === khatamId);
     if (!info) return;
-    localStorage.setItem(`selectedKhatamId:${group}`, String(khatamId));
+    localStorage.setItem(`selectedKhatamId:${slug}`, String(khatamId));
     setSelectedKhatamId(khatamId);
     setKhatamNum(info.khatam_num);
     setAdminSelected(null);
@@ -136,17 +150,17 @@ export function useKhatamState(group: GroupName = "brothers") {
     setLoading(true);
     await loadSlots(khatamId);
     setLoading(false);
-  }, [group, khatams, loadSlots]);
+  }, [slug, khatams, loadSlots]);
 
-  // Realtime subscription — follows selectedKhatamId
+  // Realtime subscription
   useEffect(() => {
     if (!selectedKhatamId) return;
 
-    const channel = supabase
+    const channel = supabasePublic
       .channel(`slots-realtime-${selectedKhatamId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "qurankhatam", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
+        { event: "*", schema: "khatam_public", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
         () => {
           loadSlots(selectedKhatamId);
           loadKhatams();
@@ -154,7 +168,7 @@ export function useKhatamState(group: GroupName = "brothers") {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabasePublic.removeChannel(channel); };
   }, [selectedKhatamId, loadSlots, loadKhatams]);
 
   const latestKhatamId = khatams.length > 0 ? khatams[0].id : null;
@@ -174,15 +188,11 @@ export function useKhatamState(group: GroupName = "brothers") {
     if (slot.status !== "av") return { err: "This quarter was just claimed. Please choose another." };
     if (countActive(name) >= 8) return { err: "You've reached the limit of 8 quarters. Complete your current portions first." };
 
-    const { error } = await supabase
-      .from("slots")
-      .update({ status: "cl", claimed_by: name, claimed_at: new Date().toISOString() })
-      .eq("khatam_id", selectedKhatamId)
-      .eq("juz", juz)
-      .eq("q", q)
-      .eq("status", "av");
-
-    if (error) return { err: "Failed to claim. Please try again." };
+    try {
+      await api.claim(slug, juz, q, name);
+    } catch (e: any) {
+      return { err: e.message || "Failed to claim. Please try again." };
+    }
 
     setModal(null);
     toast.success(`Juz ${juz} ${Q_SHORT[q - 1]} claimed by ${name}`);
@@ -194,14 +204,11 @@ export function useKhatamState(group: GroupName = "brothers") {
     const slot = getSlot(juz, q);
     if (slot.by && name.toLowerCase() !== slot.by.toLowerCase()) return { err: `This was claimed by ${slot.by}. Names don't match.` };
 
-    const { error } = await supabase
-      .from("slots")
-      .update({ status: "dn", claimed_by: name || slot.by, done_at: new Date().toISOString() })
-      .eq("khatam_id", selectedKhatamId)
-      .eq("juz", juz)
-      .eq("q", q);
-
-    if (error) return { err: "Failed to mark complete. Please try again." };
+    try {
+      await api.complete(slug, juz, q, name);
+    } catch (e: any) {
+      return { err: e.message || "Failed to mark complete. Please try again." };
+    }
 
     setModal(null);
     toast.success(`Barakallahu feek! Juz ${juz} ${Q_SHORT[q - 1]} completed`);
@@ -210,34 +217,19 @@ export function useKhatamState(group: GroupName = "brothers") {
   };
 
   const startNewKhatam = async () => {
-    const newNum = khatamNum + 1;
-    const trimmedName = newKhatamName.trim() || null;
-    const { data: newKhatam, error: kErr } = await supabase
-      .from("khatams")
-      .insert({ khatam_num: newNum, group_name: group, name: trimmedName })
-      .select()
-      .single();
+    if (!adminMode) return;
+    const trimmedName = newKhatamName.trim() || undefined;
 
-    if (kErr || !newKhatam) {
-      toast.error("Failed to start new khatam");
-      return;
-    }
-
-    const freshSlots = Array.from({ length: 120 }, (_, i) => ({
-      khatam_id: newKhatam.id,
-      juz: Math.floor(i / 4) + 1,
-      q: (i % 4) + 1,
-    }));
-
-    const { error: sErr } = await supabase.from("slots").insert(freshSlots);
-    if (sErr) {
-      toast.error("Failed to create slots for new khatam");
+    try {
+      await api.adminNewKhatam(slug, adminPin, trimmedName);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to start new khatam");
       return;
     }
 
     setAdminSelected(null);
     setNewKhatamName("");
-    toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${newNum} has begun — Bismillah!`);
+    toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${khatamNum + 1} has begun — Bismillah!`);
     const infos = await loadKhatams();
     if (infos.length > 0) {
       setSelectedKhatamId(infos[0].id);
@@ -246,31 +238,29 @@ export function useKhatamState(group: GroupName = "brothers") {
     }
   };
 
-  const tryAdmin = () => {
-    if (adminPw === ADMIN_PW) { setAdminMode(true); setAdminErr(""); toast.success("Admin mode active"); }
-    else setAdminErr("Incorrect password");
+  const tryAdmin = async () => {
+    try {
+      const { valid } = await api.verifyPin(slug, adminPin);
+      if (valid) {
+        setAdminMode(true);
+        setAdminErr("");
+        toast.success("Admin mode active");
+      } else {
+        setAdminErr("Incorrect pin");
+      }
+    } catch {
+      setAdminErr("Failed to verify pin");
+    }
   };
 
   const adminSetStatus = async (st: StatusKey) => {
-    if (!adminSelected) return;
+    if (!adminSelected || !adminMode) return;
     const { juz, q } = adminSelected;
-    const slot = getSlot(juz, q);
 
-    const updates = st === "av"
-      ? { status: "av" as const, claimed_by: null, claimed_at: null, done_at: null }
-      : st === "cl"
-        ? { status: "cl" as const, claimed_by: slot.by || "Admin", claimed_at: new Date().toISOString() }
-        : { status: "dn" as const, claimed_by: slot.by || "Admin", done_at: new Date().toISOString() };
-
-    const { error } = await supabase
-      .from("slots")
-      .update(updates)
-      .eq("khatam_id", selectedKhatamId)
-      .eq("juz", juz)
-      .eq("q", q);
-
-    if (error) {
-      toast.error("Failed to update status");
+    try {
+      await api.adminSetStatus(slug, adminPin, juz, q, st);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update status");
       return;
     }
 
@@ -282,26 +272,19 @@ export function useKhatamState(group: GroupName = "brothers") {
   const deactivateAdmin = () => {
     setAdminMode(false);
     setAdminSelected(null);
+    setAdminPin("");
     toast("Admin mode off");
   };
 
   const adminResetAllToAvailable = async () => {
-    if (!selectedKhatamId) return;
+    if (!selectedKhatamId || !adminMode) return;
     const confirmed = window.confirm("Reset ALL quarters in this khatam to Available? This cannot be undone.");
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("slots")
-      .update({
-        status: "av",
-        claimed_by: null,
-        claimed_at: null,
-        done_at: null,
-      })
-      .eq("khatam_id", selectedKhatamId);
-
-    if (error) {
-      toast.error("Failed to reset slots to available");
+    try {
+      await api.adminResetAll(slug, adminPin);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to reset slots to available");
       return;
     }
 
@@ -311,24 +294,15 @@ export function useKhatamState(group: GroupName = "brothers") {
   };
 
   const adminResetJuzToAvailable = async () => {
-    if (!selectedKhatamId || !adminSelected) return;
+    if (!selectedKhatamId || !adminSelected || !adminMode) return;
     const { juz } = adminSelected;
     const confirmed = window.confirm(`Reset all quarters in Juz ${juz} to Available?`);
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("slots")
-      .update({
-        status: "av",
-        claimed_by: null,
-        claimed_at: null,
-        done_at: null,
-      })
-      .eq("khatam_id", selectedKhatamId)
-      .eq("juz", juz);
-
-    if (error) {
-      toast.error("Failed to reset Juz to available");
+    try {
+      await api.adminResetJuz(slug, adminPin, juz);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to reset Juz to available");
       return;
     }
 
@@ -338,29 +312,16 @@ export function useKhatamState(group: GroupName = "brothers") {
   };
 
   const adminDeleteKhatam = async () => {
-    if (!selectedKhatamId) return;
+    if (!selectedKhatamId || !adminMode) return;
     const confirmed = window.confirm(
       `Permanently delete Khatam #${khatamNum} and all its slots? This cannot be undone.`
     );
     if (!confirmed) return;
 
-    const { error: slotsErr } = await supabase
-      .from("slots")
-      .delete()
-      .eq("khatam_id", selectedKhatamId);
-
-    if (slotsErr) {
-      toast.error("Failed to delete khatam slots");
-      return;
-    }
-
-    const { error: khatamErr } = await supabase
-      .from("khatams")
-      .delete()
-      .eq("id", selectedKhatamId);
-
-    if (khatamErr) {
-      toast.error("Failed to delete khatam");
+    try {
+      await api.adminDelete(slug, adminPin);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete khatam");
       return;
     }
 
@@ -380,10 +341,10 @@ export function useKhatamState(group: GroupName = "brothers") {
   };
 
   return {
-    group, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
-    loading, modal, setModal,
+    slug, slots, khatamNum, khatamName, khatams, selectedKhatamId, isLatestKhatam,
+    loading, notFound, modal, setModal,
     adminMode, adminSelected, setAdminSelected,
-    adminPw, setAdminPw, adminErr,
+    adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onComplete,

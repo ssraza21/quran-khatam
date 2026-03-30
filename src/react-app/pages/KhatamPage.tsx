@@ -1,22 +1,21 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
-import type { GroupName } from "@/hooks/useKhatamState";
 import { COLORS, Q_SHORT } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
+import { toast } from "sonner";
 
 export default function KhatamPage() {
-  const { group: groupParam } = useParams<{ group: string }>();
-  const group: GroupName = groupParam === "sisters" ? "sisters" : "brothers";
+  const { slug } = useParams<{ slug: string }>();
 
-  const state = useKhatamState(group);
+  const state = useKhatamState(slug ?? "");
   const {
-    slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
-    loading, modal, setModal,
+    khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
+    loading, notFound, modal, setModal,
     adminMode, adminSelected, setAdminSelected,
-    adminPw, setAdminPw, adminErr,
+    adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onComplete,
@@ -26,6 +25,32 @@ export default function KhatamPage() {
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
+
+  const handleShare = () => {
+    const url = `${window.location.origin}/k/${slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success("Link copied to clipboard!");
+    }).catch(() => {
+      toast.error("Failed to copy link");
+    });
+  };
+
+  if (notFound) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
+            Khatam Not Found
+          </h2>
+          <p className="text-gray-500 text-sm mb-6">No khatam exists with the slug "{slug}".</p>
+          <Link to="/"
+            className="bg-[#8B0000] text-white px-6 py-2.5 rounded-full text-sm font-semibold no-underline hover:bg-[#6B0000] transition-colors">
+            Go Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && slots.length === 0) {
     return (
@@ -43,7 +68,6 @@ export default function KhatamPage() {
       {/* Hero Header */}
       <header className="relative overflow-hidden text-white text-center py-12 px-5"
         style={{ background: "linear-gradient(135deg, #8B0000 0%, #5A0000 100%)" }}>
-        {/* Pattern overlay */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Cpath d='M40 0l40 40-40 40L0 40z' fill-opacity='0.15'/%3E%3Cpath d='M40 10l30 30-30 30L10 40z' fill='none' stroke='%23fff' stroke-opacity='0.1'/%3E%3C/g%3E%3C/svg%3E")`
@@ -52,7 +76,7 @@ export default function KhatamPage() {
         <div className="relative max-w-[1200px] mx-auto">
           <h1 className="text-[40px] sm:text-[46px] mb-1 font-normal tracking-widest text-white"
             style={{ fontFamily: "Playfair Display, serif" }}>
-            {group === "brothers" ? "Brothers" : "Sisters"} Khatam
+            {khatamName || "Khatam"}
           </h1>
           <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
             {khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}
@@ -61,6 +85,20 @@ export default function KhatamPage() {
                 ADMIN
               </span>
             )}
+          </div>
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <button
+              onClick={handleShare}
+              className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors"
+            >
+              Share Link
+            </button>
+            <Link
+              to={`/k/${slug}/metrics`}
+              className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
+            >
+              View Metrics
+            </Link>
           </div>
         </div>
       </header>
@@ -82,7 +120,7 @@ export default function KhatamPage() {
                 Alhamdulillah — Khatam {khatamNum} Complete!
               </h2>
               <p className="text-sm opacity-80 mb-4">May Allah accept from everyone who participated.</p>
-              {isLatestKhatam && (
+              {isLatestKhatam && adminMode && (
                 <button onClick={startNewKhatam}
                   className="bg-white text-[#8B0000] border-none px-7 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
                   Begin Khatam {khatamNum + 1}
@@ -150,9 +188,10 @@ export default function KhatamPage() {
 
           {!adminMode ? (
             <div className="flex gap-3 justify-center max-w-[400px] mx-auto">
-              <input type="password" value={adminPw} onChange={e => setAdminPw(e.target.value)}
+              <input type="password" value={adminPin} onChange={e => setAdminPin(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && tryAdmin()}
-                placeholder="Admin password"
+                placeholder="Admin pin"
+                inputMode="numeric"
                 className="flex-1 bg-white/10 border border-white/25 text-white px-4 py-2.5 rounded-full text-sm outline-none placeholder:text-white/40 focus:border-white/50 transition-colors"
               />
               <button onClick={tryAdmin}
