@@ -129,7 +129,7 @@ export default function LandingPage() {
       </section>
 
       {/* Objective Section */}
-      <section className="py-16 md:py-20 px-5 bg-bg-light">
+      {/* <section className="py-16 md:py-20 px-5 bg-bg-light">
         <div className="max-w-[900px] mx-auto text-center">
           <h2 className="text-3xl md:text-4xl mb-6"
             style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
@@ -141,7 +141,7 @@ export default function LandingPage() {
             as a collective act of worship — strengthening bonds and earning shared reward.
           </p>
         </div>
-      </section>
+      </section> */}
 
       {/* How It Works */}
       <section className="py-16 md:py-20 px-5 bg-white">
@@ -191,22 +191,20 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={() => handleModeToggle(false)}
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    !isSolo
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${!isSolo
                       ? "bg-[#8B0000] text-white"
                       : "bg-white text-gray-500 hover:bg-gray-50"
-                  }`}
+                    }`}
                 >
                   Community
                 </button>
                 <button
                   type="button"
                   onClick={() => handleModeToggle(true)}
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    isSolo
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${isSolo
                       ? "bg-[#8B0000] text-white"
                       : "bg-white text-gray-500 hover:bg-gray-50"
-                  }`}
+                    }`}
                 >
                   Personal
                 </button>
