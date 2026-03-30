@@ -12,6 +12,7 @@ export interface KhatamInfo {
   name: string | null;
   created_at: string;
   completed_at: string | null;
+  is_solo: boolean;
   done: number;
   total: number;
 }
@@ -82,6 +83,7 @@ export function useKhatamState(slug: string) {
         name: k.name ?? null,
         created_at: k.created_at,
         completed_at: k.completed_at,
+        is_solo: k.is_solo ?? false,
         done: count ?? 0,
         total: totalCount ?? 120,
       });
@@ -174,6 +176,9 @@ export function useKhatamState(slug: string) {
   const latestKhatamId = khatams.length > 0 ? khatams[0].id : null;
   const isLatestKhatam = selectedKhatamId === latestKhatamId;
 
+  // Derive solo mode from the currently selected khatam
+  const isSolo = khatams.find(k => k.id === selectedKhatamId)?.is_solo ?? false;
+
   const getSlot = useCallback((juz: number, q: number) => slots.find(s => s.juz === juz && s.q === q)!, [slots]);
   const countActive = useCallback((name: string) => slots.filter(s => s.by?.toLowerCase() === name.toLowerCase() && s.status === "cl").length, [slots]);
 
@@ -216,6 +221,34 @@ export function useKhatamState(slug: string) {
     await loadKhatams();
   };
 
+  // Solo: toggle a slot av↔dn with optimistic update
+  const onSoloToggle = async (juz: number, q: number) => {
+    const slot = getSlot(juz, q);
+    const willBeDone = slot.status !== "dn";
+
+    // Optimistic update for instant feedback
+    setSlots(prev => prev.map(s =>
+      s.juz === juz && s.q === q
+        ? { ...s, status: willBeDone ? "dn" : "av", done_at: willBeDone ? new Date().toISOString() : null }
+        : s
+    ));
+
+    try {
+      await api.soloToggle(slug, juz, q);
+    } catch (e: any) {
+      // Revert on error
+      setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
+      toast.error(e.message || "Failed to update");
+      return;
+    }
+
+    if (willBeDone) {
+      toast.success(`Juz ${juz} ${Q_SHORT[q - 1]} ✓`);
+    }
+
+    await loadKhatams();
+  };
+
   const startNewKhatam = async () => {
     if (!adminMode) return;
     const trimmedName = newKhatamName.trim() || undefined;
@@ -235,6 +268,68 @@ export function useKhatamState(slug: string) {
       setSelectedKhatamId(infos[0].id);
       setKhatamNum(infos[0].khatam_num);
       await loadSlots(infos[0].id);
+    }
+  };
+
+  const soloStartNewKhatam = async () => {
+    const trimmedName = newKhatamName.trim() || undefined;
+
+    try {
+      await api.soloNewKhatam(slug, trimmedName);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to start new khatam");
+      return;
+    }
+
+    setNewKhatamName("");
+    toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${khatamNum + 1} has begun — Bismillah!`);
+    const infos = await loadKhatams();
+    if (infos.length > 0) {
+      setSelectedKhatamId(infos[0].id);
+      setKhatamNum(infos[0].khatam_num);
+      await loadSlots(infos[0].id);
+    }
+  };
+
+  const soloResetAll = async () => {
+    if (!selectedKhatamId) return;
+    const confirmed = window.confirm("Reset all quarters to available? This cannot be undone.");
+    if (!confirmed) return;
+
+    try {
+      await api.soloReset(slug);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to reset");
+      return;
+    }
+
+    toast.success("All quarters reset");
+    await loadSlots(selectedKhatamId);
+    await loadKhatams();
+  };
+
+  const soloDeleteKhatam = async () => {
+    if (!selectedKhatamId) return;
+    const confirmed = window.confirm(`Permanently delete Khatam #${khatamNum}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await api.soloDelete(slug);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete");
+      return;
+    }
+
+    toast.success(`Khatam #${khatamNum} deleted`);
+    const infos = await loadKhatams();
+    if (infos.length > 0) {
+      setSelectedKhatamId(infos[0].id);
+      setKhatamNum(infos[0].khatam_num);
+      await loadSlots(infos[0].id);
+    } else {
+      setSlots([]);
+      setSelectedKhatamId(null);
+      setKhatamNum(1);
     }
   };
 
@@ -343,13 +438,15 @@ export function useKhatamState(slug: string) {
   return {
     slug, slots, khatamNum, khatamName, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
+    isSolo,
     adminMode, adminSelected, setAdminSelected,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onComplete,
+    getSlot, onBook, onComplete, onSoloToggle,
     selectKhatam,
-    startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
+    startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
+    tryAdmin, adminSetStatus, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
   };
 }

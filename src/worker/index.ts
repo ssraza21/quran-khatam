@@ -5,6 +5,13 @@ import { isValidSlug, isValidPin } from "./lib/validators";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Helper: generate random hex string
+function randomHex(len: number): string {
+  const arr = new Uint8Array(Math.ceil(len / 2));
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, len);
+}
+
 // Helper: get latest khatam for a slug
 async function getLatestKhatam(db: ReturnType<typeof createServiceClient>, slug: string) {
   const { data } = await db
@@ -28,12 +35,28 @@ async function verifyAdmin(db: ReturnType<typeof createServiceClient>, slug: str
 // POST /api/khatams — Create a new khatam
 app.post("/api/khatams", async (c) => {
   const db = createServiceClient(c.env);
-  const body = await c.req.json<{ name: string; slug: string; pin: string }>();
-  const { name, slug, pin } = body;
+  const body = await c.req.json<{ name: string; slug: string; pin?: string; is_solo?: boolean }>();
+  const { name, is_solo = false } = body;
+  let { slug } = body;
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
-  if (!isValidSlug(slug)) return c.json({ error: "Invalid slug. Use 3-60 lowercase letters, numbers, and hyphens." }, 400);
-  if (!isValidPin(pin)) return c.json({ error: "Pin must be 4-6 digits" }, 400);
+
+  let pinToHash: string;
+
+  if (is_solo) {
+    const rawSlug = (slug ?? "").trim();
+    if (!rawSlug || rawSlug.length < 2) return c.json({ error: "Slug must be at least 2 characters" }, 400);
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(rawSlug)) return c.json({ error: "Slug must use lowercase letters, numbers, and hyphens" }, 400);
+    slug = `${rawSlug}-${randomHex(4)}`;
+    pinToHash = randomHex(8);
+  } else {
+    const pin = body.pin ?? "";
+    if (!isValidSlug(slug)) return c.json({ error: "Invalid slug. Use 3-60 lowercase letters, numbers, and hyphens." }, 400);
+    if (!isValidPin(pin)) return c.json({ error: "Pin must be 4-6 digits" }, 400);
+    pinToHash = pin;
+  }
+
+  if (!isValidSlug(slug)) return c.json({ error: "Invalid slug" }, 400);
 
   // Check slug uniqueness
   const { data: existing } = await db
@@ -46,12 +69,12 @@ app.post("/api/khatams", async (c) => {
     return c.json({ error: "This slug is already taken" }, 409);
   }
 
-  const pinHash = await hashPin(pin);
+  const pinHash = await hashPin(pinToHash);
 
   const { data: khatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1 })
-    .select("id, slug, name, khatam_num, created_at")
+    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo })
+    .select("id, slug, name, khatam_num, created_at, is_solo")
     .single();
 
   if (kErr || !khatam) return c.json({ error: "Failed to create khatam" }, 500);
@@ -88,7 +111,7 @@ app.get("/api/khatams/:slug/history", async (c) => {
 
   const { data, error } = await db
     .from("khatams")
-    .select("id, slug, name, khatam_num, created_at, completed_at")
+    .select("id, slug, name, khatam_num, created_at, completed_at, is_solo")
     .eq("slug", slug)
     .order("khatam_num", { ascending: false });
 
@@ -119,6 +142,7 @@ app.post("/api/khatams/:slug/claim", async (c) => {
 
   const khatam = await getLatestKhatam(db, slug);
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
   // Check 8-active limit
   const { count } = await db
@@ -144,7 +168,6 @@ app.post("/api/khatams/:slug/claim", async (c) => {
   if (error) return c.json({ error: "Failed to claim" }, 500);
   if (!data || data.length === 0) return c.json({ error: "This quarter was just claimed. Please choose another." }, 409);
 
-  // Check if all slots are done
   await checkCompletion(db, khatam.id);
 
   return c.json({ ok: true });
@@ -160,6 +183,7 @@ app.post("/api/khatams/:slug/complete", async (c) => {
 
   const khatam = await getLatestKhatam(db, slug);
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
   // Check name match
   const { data: slot } = await db
@@ -185,6 +209,116 @@ app.post("/api/khatams/:slug/complete", async (c) => {
   if (error) return c.json({ error: "Failed to complete" }, 500);
 
   await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/solo-toggle — Toggle a slot av↔dn for solo khatams
+app.post("/api/khatams/:slug/solo-toggle", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { juz, q } = await c.req.json<{ juz: number; q: number }>();
+
+  const khatam = await getLatestKhatam(db, slug);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (!khatam.is_solo) return c.json({ error: "Not a solo khatam" }, 403);
+
+  const { data: slot } = await db
+    .from("slots")
+    .select("status")
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz)
+    .eq("q", q)
+    .single();
+
+  if (!slot) return c.json({ error: "Slot not found" }, 404);
+
+  const newStatus = slot.status === "dn" ? "av" : "dn";
+  const updates = newStatus === "dn"
+    ? { status: "dn" as const, done_at: new Date().toISOString(), claimed_by: null, claimed_at: null }
+    : { status: "av" as const, done_at: null, claimed_by: null, claimed_at: null };
+
+  const { error } = await db
+    .from("slots")
+    .update(updates)
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz)
+    .eq("q", q);
+
+  if (error) return c.json({ error: "Failed to toggle" }, 500);
+
+  await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true, status: newStatus });
+});
+
+// POST /api/khatams/:slug/solo/reset-all — Reset all slots (solo, no PIN required)
+app.post("/api/khatams/:slug/solo/reset-all", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+
+  const khatam = await getLatestKhatam(db, slug);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (!khatam.is_solo) return c.json({ error: "Not a solo khatam" }, 403);
+
+  const { error } = await db
+    .from("slots")
+    .update({ status: "av", claimed_by: null, claimed_at: null, done_at: null })
+    .eq("khatam_id", khatam.id);
+
+  if (error) return c.json({ error: "Failed to reset" }, 500);
+
+  await db.from("khatams").update({ completed_at: null }).eq("id", khatam.id);
+
+  return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/solo/new-khatam — Start new khatam in series (solo, no PIN required)
+app.post("/api/khatams/:slug/solo/new-khatam", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }));
+
+  const khatam = await getLatestKhatam(db, slug);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (!khatam.is_solo) return c.json({ error: "Not a solo khatam" }, 403);
+
+  const newNum = khatam.khatam_num + 1;
+  const khatamName = body.name?.trim() || khatam.name;
+
+  const { data: newKhatam, error: kErr } = await db
+    .from("khatams")
+    .insert({ slug, name: khatamName, pin_hash: khatam.pin_hash, khatam_num: newNum, is_solo: true })
+    .select("id, slug, name, khatam_num, created_at, is_solo")
+    .single();
+
+  if (kErr || !newKhatam) return c.json({ error: "Failed to create new khatam" }, 500);
+
+  const slots = Array.from({ length: 120 }, (_, i) => ({
+    khatam_id: newKhatam.id,
+    juz: Math.floor(i / 4) + 1,
+    q: (i % 4) + 1,
+  }));
+
+  const { error: sErr } = await db.from("slots").insert(slots);
+  if (sErr) return c.json({ error: "Failed to create slots" }, 500);
+
+  return c.json(newKhatam, 201);
+});
+
+// DELETE /api/khatams/:slug/solo/delete — Delete khatam (solo, no PIN required)
+app.delete("/api/khatams/:slug/solo/delete", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+
+  const khatam = await getLatestKhatam(db, slug);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (!khatam.is_solo) return c.json({ error: "Not a solo khatam" }, 403);
+
+  await db.from("slots").delete().eq("khatam_id", khatam.id);
+  const { error } = await db.from("khatams").delete().eq("id", khatam.id);
+
+  if (error) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });
 });

@@ -23,13 +23,14 @@ export interface KhatamMeta {
   khatam_num: number;
   created_at: string;
   completed_at: string | null;
+  is_solo: boolean;
 }
 
 export const api = {
-  createKhatam(name: string, slug: string, pin: string) {
+  createKhatam(name: string, slug: string, pin: string, is_solo?: boolean) {
     return request<KhatamCreateResult>("/khatams", {
       method: "POST",
-      body: JSON.stringify({ name, slug, pin }),
+      body: JSON.stringify({ name, slug, pin, is_solo }),
     });
   },
 
@@ -94,6 +95,34 @@ export const api = {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/delete`, {
       method: "DELETE",
       body: JSON.stringify({ pin }),
+    });
+  },
+
+  soloToggle(slug: string, juz: number, q: number) {
+    return request<{ ok: boolean; status: string }>(`/khatams/${slug}/solo-toggle`, {
+      method: "POST",
+      body: JSON.stringify({ juz, q }),
+    });
+  },
+
+  soloReset(slug: string) {
+    return request<{ ok: boolean }>(`/khatams/${slug}/solo/reset-all`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+
+  soloNewKhatam(slug: string, name?: string) {
+    return request<KhatamMeta>(`/khatams/${slug}/solo/new-khatam`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  soloDelete(slug: string) {
+    return request<{ ok: boolean }>(`/khatams/${slug}/solo/delete`, {
+      method: "DELETE",
+      body: JSON.stringify({}),
     });
   },
 };

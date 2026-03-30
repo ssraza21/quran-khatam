@@ -14,13 +14,15 @@ export default function KhatamPage() {
   const {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
+    isSolo,
     adminMode, adminSelected, setAdminSelected,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onComplete,
+    getSlot, onBook, onComplete, onSoloToggle,
     selectKhatam,
-    startNewKhatam, tryAdmin, adminSetStatus, deactivateAdmin,
+    startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
+    tryAdmin, adminSetStatus, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
   } = state;
 
@@ -80,7 +82,12 @@ export default function KhatamPage() {
           </h1>
           <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
             {khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}
-            {adminMode && (
+            {isSolo && (
+              <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
+                PERSONAL
+              </span>
+            )}
+            {adminMode && !isSolo && (
               <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
                 ADMIN
               </span>
@@ -91,14 +98,16 @@ export default function KhatamPage() {
               onClick={handleShare}
               className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors"
             >
-              Share Link
+              {isSolo ? "Copy Private Link" : "Share Link"}
             </button>
-            <Link
-              to={`/k/${slug}/metrics`}
-              className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
-            >
-              View Metrics
-            </Link>
+            {!isSolo && (
+              <Link
+                to={`/k/${slug}/metrics`}
+                className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
+              >
+                View Metrics
+              </Link>
+            )}
           </div>
         </div>
       </header>
@@ -120,8 +129,8 @@ export default function KhatamPage() {
                 Alhamdulillah — Khatam {khatamNum} Complete!
               </h2>
               <p className="text-sm opacity-80 mb-4">May Allah accept from everyone who participated.</p>
-              {isLatestKhatam && adminMode && (
-                <button onClick={startNewKhatam}
+              {isLatestKhatam && (adminMode || isSolo) && (
+                <button onClick={isSolo ? soloStartNewKhatam : startNewKhatam}
                   className="bg-white text-[#8B0000] border-none px-7 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
                   Begin Khatam {khatamNum + 1}
                 </button>
@@ -129,21 +138,38 @@ export default function KhatamPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            {[
-              { label: "Completed", val: done, color: "#2E7D32", bg: "#E8F5E9" },
-              { label: "In Progress", val: prog, color: "#F57F17", bg: "#FFF8E1" },
-              { label: "Remaining", val: rem, color: "#8B0000", bg: "#FFF5F5" },
-            ].map(s => (
-              <div key={s.label} className="rounded-xl p-3.5 text-center"
-                style={{ background: s.bg, border: `1px solid ${s.color}20` }}>
-                <div className="text-3xl font-bold leading-none" style={{ color: s.color, fontFamily: "'Playfair Display', serif" }}>
-                  {s.val}
+          {isSolo ? (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              {[
+                { label: "Completed", val: done, color: "#2E7D32", bg: "#E8F5E9" },
+                { label: "Remaining", val: rem, color: "#8B0000", bg: "#FFF5F5" },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl p-3.5 text-center"
+                  style={{ background: s.bg, border: `1px solid ${s.color}20` }}>
+                  <div className="text-3xl font-bold leading-none" style={{ color: s.color, fontFamily: "'Playfair Display', serif" }}>
+                    {s.val}
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1 uppercase tracking-wider font-medium">{s.label}</div>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1 uppercase tracking-wider font-medium">{s.label}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              {[
+                { label: "Completed", val: done, color: "#2E7D32", bg: "#E8F5E9" },
+                { label: "In Progress", val: prog, color: "#F57F17", bg: "#FFF8E1" },
+                { label: "Remaining", val: rem, color: "#8B0000", bg: "#FFF5F5" },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl p-3.5 text-center"
+                  style={{ background: s.bg, border: `1px solid ${s.color}20` }}>
+                  <div className="text-3xl font-bold leading-none" style={{ color: s.color, fontFamily: "'Playfair Display', serif" }}>
+                    {s.val}
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1 uppercase tracking-wider font-medium">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full rounded-full transition-all duration-700 ease-out"
@@ -155,12 +181,16 @@ export default function KhatamPage() {
 
       {/* Juz List */}
       <div className="max-w-[1200px] mx-auto px-5 py-6">
+        {isSolo && (
+          <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
+        )}
         <div className="flex flex-col gap-2.5">
           {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
             <JuzRow key={juz} juz={juz} slots={slots}
               adminMode={adminMode} adminSelected={adminSelected}
               onSelect={(j, q) => setAdminSelected({ juz: j, q })}
-              onOpenModal={(j, q) => setModal({ juz: j, q })} />
+              onOpenModal={(j, q) => setModal({ juz: j, q })}
+              isSolo={isSolo} onSoloToggle={onSoloToggle} />
           ))}
         </div>
       </div>
@@ -168,7 +198,7 @@ export default function KhatamPage() {
       {/* Legend */}
       <section className="bg-white border-t border-gray-200 py-8 px-5">
         <div className="max-w-[1200px] mx-auto flex justify-center gap-8 flex-wrap">
-          {(["av", "cl", "dn"] as StatusKey[]).map(k => (
+          {(isSolo ? ["av", "dn"] as StatusKey[] : ["av", "cl", "dn"] as StatusKey[]).map(k => (
             <div key={k} className="flex items-center gap-2.5">
               <div className="w-3.5 h-3.5 rounded" style={{ background: COLORS[k].accent }} />
               <span className="text-sm text-gray-500 font-medium">{COLORS[k].label}</span>
@@ -177,109 +207,160 @@ export default function KhatamPage() {
         </div>
       </section>
 
-      {/* Admin CTA Section */}
-      <section className="text-white text-center px-5 py-12"
-        style={{ background: "linear-gradient(135deg, #5A0000, #3A0000)" }}>
-        <div className="max-w-[600px] mx-auto">
-          <h2 className="text-2xl font-semibold text-white mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Organizer Admin
-          </h2>
-          <p className="opacity-60 mb-6 text-sm">Manage the Khatam, override statuses, and start new completions.</p>
+      {/* Solo Controls Section */}
+      {isSolo && (
+        <section className="text-white text-center px-5 py-12"
+          style={{ background: "linear-gradient(135deg, #5A0000, #3A0000)" }}>
+          <div className="max-w-[600px] mx-auto">
+            <h2 className="text-2xl font-semibold text-white mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Your Khatam
+            </h2>
+            <p className="opacity-60 mb-6 text-sm">Manage your personal khatam progress.</p>
 
-          {!adminMode ? (
-            <div className="flex gap-3 justify-center max-w-[400px] mx-auto">
-              <input type="password" value={adminPin} onChange={e => setAdminPin(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && tryAdmin()}
-                placeholder="Admin pin"
-                inputMode="numeric"
-                className="flex-1 bg-white/10 border border-white/25 text-white px-4 py-2.5 rounded-full text-sm outline-none placeholder:text-white/40 focus:border-white/50 transition-colors"
-              />
-              <button onClick={tryAdmin}
-                className="bg-white text-[#8B0000] border-none px-6 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
-                Unlock
-              </button>
-            </div>
-          ) : (
-            <div className="animate-fadeIn">
-              <p className="text-green-300 mb-4 font-medium text-sm">
-                Admin active — tap any quarter above to select it
-              </p>
-              {adminSelected && (
-                <p className="text-white/60 text-sm mb-3">
-                  Selected: Juz {adminSelected.juz} {Q_SHORT[adminSelected.q - 1]} ({getSlot(adminSelected.juz, adminSelected.q)?.by || "unclaimed"})
-                </p>
-              )}
-              <div className="flex gap-2 justify-center flex-wrap mb-3">
-                {(["av", "cl", "dn"] as StatusKey[]).map(st => (
-                  <button key={st} onClick={() => adminSetStatus(st)}
-                    className="bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm cursor-pointer hover:bg-white/20 transition-colors font-medium">
-                    Set {COLORS[st].label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col gap-3 items-center">
-                <div className="flex gap-2 justify-center flex-wrap items-center max-w-[400px] w-full">
-                  <input
-                    type="text"
-                    value={newKhatamName}
-                    onChange={e => setNewKhatamName(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && startNewKhatam()}
-                    placeholder="Khatam name (optional)"
-                    maxLength={60}
-                    className="flex-1 min-w-[160px] bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
-                  />
-                  <button
-                    onClick={startNewKhatam}
-                    className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
-                  >
-                    + New Khatam
-                  </button>
-                </div>
+            <div className="flex flex-col gap-3 items-center">
+              <div className="flex gap-2 justify-center flex-wrap items-center max-w-[400px] w-full">
+                <input
+                  type="text"
+                  value={newKhatamName}
+                  onChange={e => setNewKhatamName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && soloStartNewKhatam()}
+                  placeholder="Khatam name (optional)"
+                  maxLength={60}
+                  className="flex-1 min-w-[160px] bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
+                />
                 <button
-                  onClick={deactivateAdmin}
-                  className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
+                  onClick={soloStartNewKhatam}
+                  className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
                 >
-                  Deactivate
+                  + New Khatam
                 </button>
-                <div className="flex gap-2 justify-center flex-wrap mt-1">
-                  {adminSelected && (
-                    <button
-                      onClick={adminResetJuzToAvailable}
-                      className="bg-white/10 border border-white/30 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors font-medium"
-                    >
-                      Reset Juz {adminSelected.juz} to Available
-                    </button>
-                  )}
-                  <button
-                    onClick={adminResetAllToAvailable}
-                    className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
-                  >
-                    Reset Entire Khatam to Available
-                  </button>
-                  <button
-                    onClick={adminDeleteKhatam}
-                    className="bg-black/60 border border-red-400/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-black/80 transition-colors font-semibold"
-                  >
-                    Delete This Khatam
-                  </button>
-                </div>
+              </div>
+              <div className="flex gap-2 justify-center flex-wrap mt-1">
+                <button
+                  onClick={soloResetAll}
+                  className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
+                >
+                  Reset Khatam to Available
+                </button>
+                <button
+                  onClick={soloDeleteKhatam}
+                  className="bg-black/60 border border-red-400/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-black/80 transition-colors font-semibold"
+                >
+                  Delete This Khatam
+                </button>
               </div>
             </div>
-          )}
-          {adminErr && <p className="text-red-300 mt-3 text-sm">{adminErr}</p>}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
-      {/* Drawer Modal */}
-      <SlotDrawer
-        slot={modalSlot}
-        juz={modal?.juz ?? 0}
-        q={modal?.q ?? 0}
-        open={!!modal}
-        onClose={() => setModal(null)}
-        onBook={onBook}
-        onComplete={onComplete}
-      />
+      {/* Admin CTA Section (community only) */}
+      {!isSolo && (
+        <section className="text-white text-center px-5 py-12"
+          style={{ background: "linear-gradient(135deg, #5A0000, #3A0000)" }}>
+          <div className="max-w-[600px] mx-auto">
+            <h2 className="text-2xl font-semibold text-white mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Organizer Admin
+            </h2>
+            <p className="opacity-60 mb-6 text-sm">Manage the Khatam, override statuses, and start new completions.</p>
+
+            {!adminMode ? (
+              <div className="flex gap-3 justify-center max-w-[400px] mx-auto">
+                <input type="password" value={adminPin} onChange={e => setAdminPin(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && tryAdmin()}
+                  placeholder="Admin pin"
+                  inputMode="numeric"
+                  className="flex-1 bg-white/10 border border-white/25 text-white px-4 py-2.5 rounded-full text-sm outline-none placeholder:text-white/40 focus:border-white/50 transition-colors"
+                />
+                <button onClick={tryAdmin}
+                  className="bg-white text-[#8B0000] border-none px-6 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
+                  Unlock
+                </button>
+              </div>
+            ) : (
+              <div className="animate-fadeIn">
+                <p className="text-green-300 mb-4 font-medium text-sm">
+                  Admin active — tap any quarter above to select it
+                </p>
+                {adminSelected && (
+                  <p className="text-white/60 text-sm mb-3">
+                    Selected: Juz {adminSelected.juz} {Q_SHORT[adminSelected.q - 1]} ({getSlot(adminSelected.juz, adminSelected.q)?.by || "unclaimed"})
+                  </p>
+                )}
+                <div className="flex gap-2 justify-center flex-wrap mb-3">
+                  {(["av", "cl", "dn"] as StatusKey[]).map(st => (
+                    <button key={st} onClick={() => adminSetStatus(st)}
+                      className="bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm cursor-pointer hover:bg-white/20 transition-colors font-medium">
+                      Set {COLORS[st].label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-3 items-center">
+                  <div className="flex gap-2 justify-center flex-wrap items-center max-w-[400px] w-full">
+                    <input
+                      type="text"
+                      value={newKhatamName}
+                      onChange={e => setNewKhatamName(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && startNewKhatam()}
+                      placeholder="Khatam name (optional)"
+                      maxLength={60}
+                      className="flex-1 min-w-[160px] bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
+                    />
+                    <button
+                      onClick={startNewKhatam}
+                      className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
+                    >
+                      + New Khatam
+                    </button>
+                  </div>
+                  <button
+                    onClick={deactivateAdmin}
+                    className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
+                  >
+                    Deactivate
+                  </button>
+                  <div className="flex gap-2 justify-center flex-wrap mt-1">
+                    {adminSelected && (
+                      <button
+                        onClick={adminResetJuzToAvailable}
+                        className="bg-white/10 border border-white/30 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors font-medium"
+                      >
+                        Reset Juz {adminSelected.juz} to Available
+                      </button>
+                    )}
+                    <button
+                      onClick={adminResetAllToAvailable}
+                      className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
+                    >
+                      Reset Entire Khatam to Available
+                    </button>
+                    <button
+                      onClick={adminDeleteKhatam}
+                      className="bg-black/60 border border-red-400/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-black/80 transition-colors font-semibold"
+                    >
+                      Delete This Khatam
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {adminErr && <p className="text-red-300 mt-3 text-sm">{adminErr}</p>}
+          </div>
+        </section>
+      )}
+
+      {/* Drawer Modal (community only) */}
+      {!isSolo && (
+        <SlotDrawer
+          slot={modalSlot}
+          juz={modal?.juz ?? 0}
+          q={modal?.q ?? 0}
+          open={!!modal}
+          onClose={() => setModal(null)}
+          onBook={onBook}
+          onComplete={onComplete}
+        />
+      )}
     </>
   );
 }
