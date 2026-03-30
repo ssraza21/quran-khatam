@@ -25,4 +25,5 @@ export interface KhatamPublic {
   khatam_num: number;
   created_at: string;
   completed_at: string | null;
+  is_solo: boolean;
 }

@@ -22,6 +22,7 @@ export default function LandingPage() {
   const [cPinConfirm, setCPinConfirm] = useState("");
   const [cErr, setCErr] = useState("");
   const [cLoading, setCLoading] = useState(false);
+  const [isSolo, setIsSolo] = useState(false);
 
   // Join form state
   const [jSlug, setJSlug] = useState("");
@@ -35,7 +36,14 @@ export default function LandingPage() {
 
   const handleSlugChange = (val: string) => {
     setCSlugEdited(true);
-    setCSlug(val.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 60));
+    setCSlug(val.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 55));
+  };
+
+  const handleModeToggle = (solo: boolean) => {
+    setIsSolo(solo);
+    setCErr("");
+    setCPin("");
+    setCPinConfirm("");
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -43,15 +51,20 @@ export default function LandingPage() {
     setCErr("");
 
     if (!cName.trim()) { setCErr("Name is required"); return; }
-    if (!cSlug || cSlug.length < 3) { setCErr("Slug must be at least 3 characters"); return; }
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(cSlug)) { setCErr("Slug must start and end with a letter or number"); return; }
-    if (!/^\d{4,6}$/.test(cPin)) { setCErr("Pin must be 4-6 digits"); return; }
-    if (cPin !== cPinConfirm) { setCErr("Pins don't match"); return; }
+
+    if (isSolo) {
+      if (!cSlug || cSlug.length < 2) { setCErr("Slug must be at least 2 characters"); return; }
+    } else {
+      if (!cSlug || cSlug.length < 3) { setCErr("Slug must be at least 3 characters"); return; }
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(cSlug)) { setCErr("Slug must start and end with a letter or number"); return; }
+      if (!/^\d{4,6}$/.test(cPin)) { setCErr("Pin must be 4-6 digits"); return; }
+      if (cPin !== cPinConfirm) { setCErr("Pins don't match"); return; }
+    }
 
     setCLoading(true);
     try {
-      await api.createKhatam(cName.trim(), cSlug, cPin);
-      navigate(`/k/${cSlug}`);
+      const result = await api.createKhatam(cName.trim(), cSlug, isSolo ? "" : cPin, isSolo);
+      navigate(`/k/${result.slug}`);
     } catch (err: any) {
       setCErr(err.message || "Failed to create khatam");
     } finally {
@@ -171,7 +184,39 @@ export default function LandingPage() {
               <h3 className="text-2xl mb-1" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
                 Create a Khatam
               </h3>
-              <p className="text-sm text-gray-400 mb-6">Start a new khatam for your community</p>
+              <p className="text-sm text-gray-400 mb-5">Start a new khatam for your community or yourself</p>
+
+              {/* Mode Toggle */}
+              <div className="flex gap-0 mb-6 border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleModeToggle(false)}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                    !isSolo
+                      ? "bg-[#8B0000] text-white"
+                      : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Community
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeToggle(true)}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                    isSolo
+                      ? "bg-[#8B0000] text-white"
+                      : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Personal
+                </button>
+              </div>
+
+              {isSolo && (
+                <div className="text-xs text-[#8B0000] bg-[#FFF5F5] border border-[#8B0000]/20 rounded-lg px-3 py-2 mb-4 leading-relaxed">
+                  Track your own personal khatam. A unique code will be added to your URL — bookmark it to return anytime.
+                </div>
+              )}
 
               <form onSubmit={handleCreate} className="flex flex-col gap-4">
                 <div>
@@ -180,7 +225,7 @@ export default function LandingPage() {
                     type="text"
                     value={cName}
                     onChange={e => handleNameChange(e.target.value)}
-                    placeholder="e.g. Ramadan 2026 Family"
+                    placeholder={isSolo ? "e.g. My Ramadan 2026" : "e.g. Ramadan 2026 Family"}
                     maxLength={60}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
                   />
@@ -194,37 +239,45 @@ export default function LandingPage() {
                       type="text"
                       value={cSlug}
                       onChange={e => handleSlugChange(e.target.value)}
-                      placeholder="ramadan-2026-family"
-                      maxLength={60}
+                      placeholder={isSolo ? "my-ramadan-2026" : "ramadan-2026-family"}
+                      maxLength={55}
                       className="flex-1 px-2 py-2.5 text-sm outline-none border-none"
                     />
+                    {isSolo && (
+                      <span className="text-xs text-gray-300 pr-3 shrink-0 font-mono">-????</span>
+                    )}
                   </div>
+                  {isSolo && (
+                    <p className="text-[11px] text-gray-400 mt-1">A 4-character code will be appended for privacy</p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Admin Pin</label>
-                    <input
-                      type="password"
-                      value={cPin}
-                      onChange={e => setCPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="4-6 digits"
-                      inputMode="numeric"
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
-                    />
+                {!isSolo && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Admin Pin</label>
+                      <input
+                        type="password"
+                        value={cPin}
+                        onChange={e => setCPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="4-6 digits"
+                        inputMode="numeric"
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Confirm Pin</label>
+                      <input
+                        type="password"
+                        value={cPinConfirm}
+                        onChange={e => setCPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="Repeat pin"
+                        inputMode="numeric"
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Confirm Pin</label>
-                    <input
-                      type="password"
-                      value={cPinConfirm}
-                      onChange={e => setCPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="Repeat pin"
-                      inputMode="numeric"
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
-                    />
-                  </div>
-                </div>
+                )}
 
                 {cErr && <p className="text-red-500 text-sm">{cErr}</p>}
 
@@ -233,7 +286,7 @@ export default function LandingPage() {
                   disabled={cLoading}
                   className="bg-[#8B0000] text-white px-6 py-3 rounded-full text-sm font-semibold hover:bg-[#6B0000] transition-colors disabled:opacity-50"
                 >
-                  {cLoading ? "Creating..." : "Create Khatam"}
+                  {cLoading ? "Creating..." : isSolo ? "Create Personal Khatam" : "Create Khatam"}
                 </button>
               </form>
             </div>

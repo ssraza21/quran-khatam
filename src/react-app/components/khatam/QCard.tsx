@@ -10,18 +10,50 @@ interface QCardProps {
   adminSelected: { juz: number; q: number } | null;
   onSelect: (juz: number, q: number) => void;
   onOpenModal: (juz: number, q: number) => void;
+  isSolo?: boolean;
+  onSoloToggle?: (juz: number, q: number) => void;
 }
 
-export default function QCard({ slot, juz, q, adminMode, adminSelected, onSelect, onOpenModal }: QCardProps) {
+export default function QCard({ slot, juz, q, adminMode, adminSelected, onSelect, onOpenModal, isSolo, onSoloToggle }: QCardProps) {
   const c = COLORS[slot.status];
   const stale = isStale(slot);
   const isAdminSel = adminMode && adminSelected?.juz === juz && adminSelected?.q === q;
+
+  const handleClick = () => {
+    if (adminMode) return onSelect(juz, q);
+    if (isSolo && onSoloToggle) return onSoloToggle(juz, q);
+    return onOpenModal(juz, q);
+  };
+
+  if (isSolo) {
+    const isDone = slot.status === "dn";
+    return (
+      <div
+        onClick={handleClick}
+        className={`
+          relative rounded-xl p-3.5 pb-3 text-center cursor-pointer select-none flex flex-col items-center
+          transition-all duration-150 ease-out
+          hover:-translate-y-0.5 hover:shadow-md
+          shadow-sm active:scale-95
+        `}
+        style={{
+          background: isDone ? COLORS.dn.accentBg : COLORS.av.bg,
+          border: `1.5px solid ${isDone ? COLORS.dn.accent + "60" : COLORS.av.border}`,
+        }}
+      >
+        <div className="text-[11px] text-gray-400 font-medium tracking-wide mb-1">{Q_SHORT[q - 1]}</div>
+        <div className="text-xl font-semibold" style={{ color: isDone ? COLORS.dn.accent : "#D0D0D0" }}>
+          {isDone ? "✓" : "○"}
+        </div>
+      </div>
+    );
+  }
 
   const statusIcon = slot.status === "dn" ? "\u2713" : slot.status === "cl" ? "\u25CE" : "\u25CB";
 
   return (
     <div
-      onClick={() => adminMode ? onSelect(juz, q) : onOpenModal(juz, q)}
+      onClick={handleClick}
       className={`
         relative rounded-xl p-3.5 pb-3 text-center cursor-pointer select-none flex flex-col items-center
         transition-all duration-200 ease-out

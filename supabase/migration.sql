@@ -48,3 +48,6 @@ CREATE POLICY "service_all_slots" ON khatam_public.slots
 -- Realtime: Enable for khatam_public.slots
 ALTER PUBLICATION supabase_realtime ADD TABLE khatam_public.slots;
 ALTER PUBLICATION supabase_realtime ADD TABLE khatam_public.khatams;
+
+-- Migration: Add is_solo column for personal khatam tracking
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS is_solo BOOLEAN NOT NULL DEFAULT FALSE;

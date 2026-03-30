@@ -10,9 +10,11 @@ interface JuzRowProps {
   adminSelected: { juz: number; q: number } | null;
   onSelect: (juz: number, q: number) => void;
   onOpenModal: (juz: number, q: number) => void;
+  isSolo?: boolean;
+  onSoloToggle?: (juz: number, q: number) => void;
 }
 
-export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal }: JuzRowProps) {
+export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal, isSolo, onSoloToggle }: JuzRowProps) {
   const [open, setOpen] = useState(false);
   const jSlots = slots.filter(s => s.juz === juz);
   const done = jSlots.filter(s => s.status === "dn").length;
@@ -60,7 +62,8 @@ export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect,
           {jSlots.map(s => (
             <QCard key={s.q} slot={s} juz={juz} q={s.q}
               adminMode={adminMode} adminSelected={adminSelected}
-              onSelect={onSelect} onOpenModal={onOpenModal} />
+              onSelect={onSelect} onOpenModal={onOpenModal}
+              isSolo={isSolo} onSoloToggle={onSoloToggle} />
           ))}
         </div>
       )}
