@@ -192,8 +192,8 @@ export default function LandingPage() {
                   type="button"
                   onClick={() => handleModeToggle(false)}
                   className={`flex-1 py-2 text-sm font-medium transition-colors ${!isSolo
-                      ? "bg-[#8B0000] text-white"
-                      : "bg-white text-gray-500 hover:bg-gray-50"
+                    ? "bg-[#8B0000] text-white"
+                    : "bg-white text-gray-500 hover:bg-gray-50"
                     }`}
                 >
                   Community
@@ -202,8 +202,8 @@ export default function LandingPage() {
                   type="button"
                   onClick={() => handleModeToggle(true)}
                   className={`flex-1 py-2 text-sm font-medium transition-colors ${isSolo
-                      ? "bg-[#8B0000] text-white"
-                      : "bg-white text-gray-500 hover:bg-gray-50"
+                    ? "bg-[#8B0000] text-white"
+                    : "bg-white text-gray-500 hover:bg-gray-50"
                     }`}
                 >
                   Personal
@@ -241,13 +241,7 @@ export default function LandingPage() {
                       maxLength={55}
                       className="flex-1 px-2 py-2.5 text-sm outline-none border-none"
                     />
-                    {isSolo && (
-                      <span className="text-xs text-gray-300 pr-3 shrink-0 font-mono">-????</span>
-                    )}
                   </div>
-                  {isSolo && (
-                    <p className="text-[11px] text-gray-400 mt-1">A 4-character code will be appended for privacy</p>
-                  )}
                 </div>
 
                 {!isSolo && (

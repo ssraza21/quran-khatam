@@ -25,10 +25,10 @@ export default function Navbar() {
   // Add contextual links when viewing a khatam
   const navItems = slug
     ? [
-        ...baseItems,
-        { name: "Tracker", path: `/k/${slug}`, icon: Activity },
-        { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
-      ]
+      ...baseItems,
+      { name: "Tracker", path: `/k/${slug}`, icon: Activity },
+      { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
+    ]
     : baseItems;
 
   const isActive = (path: string) => pathname === path;

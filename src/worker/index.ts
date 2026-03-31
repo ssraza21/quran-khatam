@@ -47,7 +47,7 @@ app.post("/api/khatams", async (c) => {
     const rawSlug = (slug ?? "").trim();
     if (!rawSlug || rawSlug.length < 2) return c.json({ error: "Slug must be at least 2 characters" }, 400);
     if (!/^[a-z0-9][a-z0-9-]*$/.test(rawSlug)) return c.json({ error: "Slug must use lowercase letters, numbers, and hyphens" }, 400);
-    slug = `${rawSlug}-${randomHex(4)}`;
+    slug = `${rawSlug}`;
     pinToHash = randomHex(8);
   } else {
     const pin = body.pin ?? "";
