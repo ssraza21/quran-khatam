@@ -15,6 +15,7 @@ export default function KhatamPage() {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
+    showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
@@ -24,6 +25,7 @@ export default function KhatamPage() {
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
+    adminToggleGlobeNames,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -93,7 +95,7 @@ export default function KhatamPage() {
               </span>
             )}
           </div>
-          <div className="flex items-center justify-center gap-3 mt-4">
+          <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
             <button
               onClick={handleShare}
               className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors"
@@ -108,6 +110,12 @@ export default function KhatamPage() {
                 View Metrics
               </Link>
             )}
+            <Link
+              to="/globe"
+              className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
+            >
+              🌍 World Globe
+            </Link>
           </div>
         </div>
       </header>
@@ -341,6 +349,16 @@ export default function KhatamPage() {
                       Delete This Khatam
                     </button>
                   </div>
+                  {locationCountry && (
+                    <div className="mt-3 pt-3 border-t border-white/10">
+                      <button
+                        onClick={adminToggleGlobeNames}
+                        className="bg-white/10 border border-white/25 text-white/80 px-5 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors"
+                      >
+                        🌍 {showNamesOnGlobe ? "Hide names on World Globe" : "Show names on World Globe"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

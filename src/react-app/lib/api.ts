@@ -1,3 +1,5 @@
+import type { GlobeData } from "@/lib/types";
+
 const BASE = "/api";
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -24,13 +26,38 @@ export interface KhatamMeta {
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
+  location_city?: string | null;
+  location_country?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
+  show_names_on_globe?: boolean;
 }
 
 export const api = {
-  createKhatam(name: string, slug: string, pin: string, is_solo?: boolean) {
+  createKhatam(
+    name: string,
+    slug: string,
+    pin: string,
+    is_solo?: boolean,
+    location_city?: string,
+    location_country?: string,
+    location_lat?: number,
+    location_lng?: number,
+    show_names_on_globe?: boolean,
+  ) {
     return request<KhatamCreateResult>("/khatams", {
       method: "POST",
-      body: JSON.stringify({ name, slug, pin, is_solo }),
+      body: JSON.stringify({
+        name,
+        slug,
+        pin,
+        is_solo,
+        location_city: location_city || undefined,
+        location_country: location_country || undefined,
+        location_lat,
+        location_lng,
+        show_names_on_globe,
+      }),
     });
   },
 
@@ -98,6 +125,13 @@ export const api = {
     });
   },
 
+  adminToggleGlobeNames(slug: string, pin: string) {
+    return request<{ ok: boolean; show_names_on_globe: boolean }>(
+      `/khatams/${slug}/admin/toggle-globe-names`,
+      { method: "POST", body: JSON.stringify({ pin }) }
+    );
+  },
+
   soloToggle(slug: string, juz: number, q: number) {
     return request<{ ok: boolean; status: string }>(`/khatams/${slug}/solo-toggle`, {
       method: "POST",
@@ -124,5 +158,9 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({}),
     });
+  },
+
+  getGlobeData() {
+    return request<GlobeData>("/globe");
   },
 };

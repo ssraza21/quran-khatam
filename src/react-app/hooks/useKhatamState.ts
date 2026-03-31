@@ -13,6 +13,8 @@ export interface KhatamInfo {
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
+  show_names_on_globe: boolean;
+  location_country: string | null;
   done: number;
   total: number;
 }
@@ -84,6 +86,8 @@ export function useKhatamState(slug: string) {
         created_at: k.created_at,
         completed_at: k.completed_at,
         is_solo: k.is_solo ?? false,
+        show_names_on_globe: k.show_names_on_globe ?? true,
+        location_country: k.location_country ?? null,
         done: count ?? 0,
         total: totalCount ?? 120,
       });
@@ -435,10 +439,25 @@ export function useKhatamState(slug: string) {
     }
   };
 
+  const adminToggleGlobeNames = async () => {
+    if (!adminMode) return;
+    try {
+      const result = await api.adminToggleGlobeNames(slug, adminPin);
+      toast.success(result.show_names_on_globe ? "Names shown on globe" : "Names hidden on globe");
+      await loadKhatams();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update");
+    }
+  };
+
+  const selectedKhatamInfo = khatams.find(k => k.id === selectedKhatamId);
+
   return {
     slug, slots, khatamNum, khatamName, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
+    showNamesOnGlobe: selectedKhatamInfo?.show_names_on_globe ?? true,
+    locationCountry: selectedKhatamInfo?.location_country ?? null,
     adminMode, adminSelected, setAdminSelected,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
@@ -448,5 +467,6 @@ export function useKhatamState(slug: string) {
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
+    adminToggleGlobeNames,
   };
 }

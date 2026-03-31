@@ -32,11 +32,92 @@ async function verifyAdmin(db: ReturnType<typeof createServiceClient>, slug: str
   return { valid, khatam: valid ? khatam : null };
 }
 
+// GET /api/globe — Aggregated globe data (all khatams with location)
+app.get("/api/globe", async (c) => {
+  const db = createServiceClient(c.env);
+
+  // Fetch all completed slots for khatams that have a location set, most recent first
+  const { data: rows, error } = await db
+    .from("slots")
+    .select("juz, q, claimed_by, done_at, khatams!inner(name, location_city, location_country, location_lat, location_lng, show_names_on_globe)")
+    .eq("status", "dn")
+    .not("khatams.location_lat", "is", null)
+    .order("done_at", { ascending: false })
+    .limit(500);
+
+  if (error) return c.json({ error: "Failed to fetch globe data" }, 500);
+
+  type CompletionRow = {
+    juz: number;
+    q: number;
+    claimed_by: string | null;
+    done_at: string | null;
+    khatams: {
+      name: string;
+      location_city: string | null;
+      location_country: string | null;
+      location_lat: number;
+      location_lng: number;
+      show_names_on_globe: boolean;
+    };
+  };
+  const completions = (rows as unknown) as CompletionRow[];
+
+  const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+
+  // Aggregate markers by location
+  const markerMap = new Map<string, { lat: number; lng: number; location: string; count: number; isRecent: boolean }>();
+  for (const row of completions) {
+    const k = row.khatams;
+    const key = `${k.location_lat.toFixed(4)},${k.location_lng.toFixed(4)}`;
+    const label = k.location_city ? `${k.location_city}, ${k.location_country}` : (k.location_country ?? "");
+    const isRecent = !!row.done_at && new Date(row.done_at).getTime() > fiveMinAgo;
+    const existing = markerMap.get(key);
+    if (existing) {
+      existing.count++;
+      if (isRecent) existing.isRecent = true;
+    } else {
+      markerMap.set(key, { lat: k.location_lat, lng: k.location_lng, location: label, count: 1, isRecent });
+    }
+  }
+
+  // Recent feed — last 30 completions
+  const recent = completions.slice(0, 30).map(row => {
+    const k = row.khatams;
+    const label = k.location_city ? `${k.location_city}, ${k.location_country}` : (k.location_country ?? "");
+    return {
+      juz: row.juz,
+      q: row.q,
+      khatam_name: k.name,
+      location: label,
+      completed_at: row.done_at ?? "",
+      name: k.show_names_on_globe ? (row.claimed_by ?? null) : null,
+    };
+  });
+
+  return c.json({
+    markers: Array.from(markerMap.values()),
+    recent,
+    total_completions: completions.length,
+    total_locations: markerMap.size,
+  });
+});
+
 // POST /api/khatams — Create a new khatam
 app.post("/api/khatams", async (c) => {
   const db = createServiceClient(c.env);
-  const body = await c.req.json<{ name: string; slug: string; pin?: string; is_solo?: boolean }>();
-  const { name, is_solo = false } = body;
+  const body = await c.req.json<{
+    name: string;
+    slug: string;
+    pin?: string;
+    is_solo?: boolean;
+    location_city?: string;
+    location_country?: string;
+    location_lat?: number;
+    location_lng?: number;
+    show_names_on_globe?: boolean;
+  }>();
+  const { name, is_solo = false, location_city, location_country, location_lat, location_lng, show_names_on_globe } = body;
   let { slug } = body;
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
@@ -71,9 +152,19 @@ app.post("/api/khatams", async (c) => {
 
   const pinHash = await hashPin(pinToHash);
 
+  const locationFields = location_lat != null && location_lng != null
+    ? {
+        location_city: location_city?.trim() || null,
+        location_country: location_country?.trim() || null,
+        location_lat,
+        location_lng,
+        show_names_on_globe: show_names_on_globe ?? true,
+      }
+    : {};
+
   const { data: khatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo })
+    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo, ...locationFields })
     .select("id, slug, name, khatam_num, created_at, is_solo")
     .single();
 
@@ -451,6 +542,26 @@ app.delete("/api/khatams/:slug/admin/delete", async (c) => {
   if (error) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/admin/toggle-globe-names
+app.post("/api/khatams/:slug/admin/toggle-globe-names", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin } = await c.req.json<{ pin: string }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+
+  const newValue = !(khatam.show_names_on_globe ?? true);
+  const { error } = await db
+    .from("khatams")
+    .update({ show_names_on_globe: newValue })
+    .eq("id", khatam.id);
+
+  if (error) return c.json({ error: "Failed to update" }, 500);
+
+  return c.json({ ok: true, show_names_on_globe: newValue });
 });
 
 // Helper: check if all 120 slots are done and mark khatam complete
