@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
 import { COUNTRIES } from "@/lib/countries";
@@ -12,8 +13,31 @@ function nameToSlug(name: string): string {
     .slice(0, 60);
 }
 
+const LANDING_SECTION_HIGHLIGHT_MS = 2600;
+
 export default function LandingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const createCardRef = useRef<HTMLDivElement>(null);
+  const joinCardRef = useRef<HTMLDivElement>(null);
+  const [highlightedCard, setHighlightedCard] = useState<null | "create" | "join">(null);
+
+  useEffect(() => {
+    const id = location.hash.replace(/^#/, "");
+    if (id !== "create-khatam" && id !== "join-khatam") return;
+
+    const el = id === "create-khatam" ? createCardRef.current : joinCardRef.current;
+    if (!el) return;
+
+    const scrollAndHighlight = () => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedCard(id === "create-khatam" ? "create" : "join");
+    };
+    requestAnimationFrame(() => requestAnimationFrame(scrollAndHighlight));
+
+    const t = window.setTimeout(() => setHighlightedCard(null), LANDING_SECTION_HIGHLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [location.hash]);
 
   // Create form state
   const [cName, setCName] = useState("");
@@ -142,14 +166,6 @@ export default function LandingPage() {
             Come together as a community to complete the recitation of the entire Quran.
             Create a khatam, share the link, and track progress together.
           </p>
-
-          <Link
-            to="/globe"
-            className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white/90 border border-white/20 hover:border-white/40 px-5 py-2.5 rounded-full transition-all duration-200"
-          >
-            <span>🌍</span>
-            <span>See the World Reciting</span>
-          </Link>
         </div>
       </section>
 
@@ -205,7 +221,14 @@ export default function LandingPage() {
         <div className="max-w-[900px] mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Create a Khatam */}
-            <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+            <div
+              ref={createCardRef}
+              id="create-khatam"
+              className={cn(
+                "bg-white rounded-2xl p-8 border border-gray-100 shadow-sm",
+                highlightedCard === "create" && "animate-landing-card-highlight"
+              )}
+            >
               <h3 className="text-2xl mb-1" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
                 Create a Khatam
               </h3>
@@ -362,7 +385,14 @@ export default function LandingPage() {
             </div>
 
             {/* Join a Khatam */}
-            <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+            <div
+              ref={joinCardRef}
+              id="join-khatam"
+              className={cn(
+                "bg-white rounded-2xl p-8 border border-gray-100 shadow-sm",
+                highlightedCard === "join" && "animate-landing-card-highlight"
+              )}
+            >
               <h3 className="text-2xl mb-1" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
                 Join a Khatam
               </h3>
