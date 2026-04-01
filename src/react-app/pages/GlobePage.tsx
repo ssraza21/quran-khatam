@@ -52,7 +52,7 @@ const DEMO_SPOTS: DemoSpot[] = [
 ];
 
 const DEMO_INTERVAL_MS = 900;     // how fast new markers appear
-const DEMO_RECENT_TTL_MS = 3500;  // how long a marker pulses before going steady
+const DEMO_RECENT_TTL_MS = 4200;  // how long radiating pulse lasts before settling
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,11 +68,16 @@ function buildDynamicMarkers(data: GlobeData): DynamicMarker[] {
   }));
 }
 
-function buildDemoMarkers(visibleCount: number, recentSet: Set<number>): DynamicMarker[] {
+function buildDemoMarkers(
+  visibleCount: number,
+  recentSet: Set<number>,
+  spawnTimes: Map<number, number>,
+): DynamicMarker[] {
   return DEMO_SPOTS.slice(0, visibleCount).map((spot, i) => ({
     location: [spot.lat, spot.lng] as [number, number],
     size: 0.07,
     isRecent: recentSet.has(i),
+    spawnedAt: spawnTimes.get(i),
   }));
 }
 
@@ -106,6 +111,7 @@ export default function GlobePage() {
   // Demo state
   const [demoVisible, setDemoVisible] = useState(0);
   const [demoRecent, setDemoRecent] = useState<Set<number>>(new Set());
+  const [demoSpawnTimes, setDemoSpawnTimes] = useState<Map<number, number>>(() => new Map());
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoRecentTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -139,6 +145,7 @@ export default function GlobePage() {
   const startDemo = useCallback(() => {
     setDemoVisible(0);
     setDemoRecent(new Set());
+    setDemoSpawnTimes(new Map());
     // clear any pending timers
     demoRecentTimers.current.forEach(clearTimeout);
     demoRecentTimers.current = [];
@@ -146,12 +153,19 @@ export default function GlobePage() {
     let idx = 0;
     const tick = () => {
       const currentIdx = idx;
+      const spawnedAt = Date.now();
       setDemoVisible(currentIdx + 1);
       setDemoRecent(prev => new Set([...prev, currentIdx]));
+      setDemoSpawnTimes(prev => new Map(prev).set(currentIdx, spawnedAt));
 
       const t = setTimeout(() => {
         setDemoRecent(prev => {
           const next = new Set(prev);
+          next.delete(currentIdx);
+          return next;
+        });
+        setDemoSpawnTimes(prev => {
+          const next = new Map(prev);
           next.delete(currentIdx);
           return next;
         });
@@ -178,6 +192,7 @@ export default function GlobePage() {
       stopDemo();
       setDemoVisible(0);
       setDemoRecent(new Set());
+      setDemoSpawnTimes(new Map());
     }
     return stopDemo;
   }, [isDemo, startDemo, stopDemo]);
@@ -189,7 +204,7 @@ export default function GlobePage() {
 
   // ---- Derived display data ----
   const liveMarkers = data ? buildDynamicMarkers(data) : undefined;
-  const demoMarkers = buildDemoMarkers(demoVisible, demoRecent);
+  const demoMarkers = buildDemoMarkers(demoVisible, demoRecent, demoSpawnTimes);
   const dynamicMarkers = isDemo ? demoMarkers : liveMarkers;
 
   const liveRecent = data?.recent ?? [];
@@ -292,7 +307,7 @@ export default function GlobePage() {
           <div className="relative" style={{ height: "min(70vw, 600px)" }}>
             <Globe
               className="relative w-full h-full"
-              dynamicMarkers={(isDemo && demoVisible === 0) ? undefined : (isEmpty ? undefined : dynamicMarkers)}
+              dynamicMarkers={isDemo ? dynamicMarkers : (isEmpty ? undefined : dynamicMarkers)}
               autoRotate={true}
             />
 

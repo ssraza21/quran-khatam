@@ -1,5 +1,21 @@
 import type { Slot, StatusKey } from "./types";
 
+export function buildWhatsAppKhatamMessage(khatamName: string, slug: string, slots: Slot[]): string {
+  const lines: string[] = [];
+  lines.push(`*${khatamName}*`);
+  lines.push(`Claim your Juz here 👇`);
+  lines.push(`quran-khatam.com/k/${slug}`);
+  lines.push("");
+
+  for (let juz = 1; juz <= 30; juz++) {
+    const juzSlots = slots.filter(s => s.juz === juz);
+    const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
+    lines.push(`${juz}. ${names.join(", ")}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function makeDummySlots(): Slot[] {
   const names = ["Ahmad","Fatima","Yusuf","Maryam","Ibrahim","Aisha","Omar","Zainab","Hassan","Noor","Bilal","Khadija"];
   const counts: Record<string, number> = {};

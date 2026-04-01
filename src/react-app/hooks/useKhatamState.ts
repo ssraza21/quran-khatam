@@ -203,8 +203,24 @@ export function useKhatamState(slug: string) {
       return { err: e.message || "Failed to claim. Please try again." };
     }
 
-    setModal(null);
-    toast.success(`Juz ${juz} ${Q_SHORT[q - 1]} claimed by ${name}`);
+    await loadSlots(selectedKhatamId!);
+    await loadKhatams();
+  };
+
+  const onBookJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
+    const juzSlots = slots.filter(s => s.juz === juz);
+    const unavailable = juzSlots.filter(s => s.status !== "av");
+    if (unavailable.length > 0) return { err: "Some quarters in this Juz are no longer available." };
+    if (countActive(name) + 4 > 8) return { err: "Claiming a full Juz would exceed the limit of 8 active quarters." };
+
+    try {
+      for (const s of juzSlots) {
+        await api.claim(slug, juz, s.q, name);
+      }
+    } catch (e: any) {
+      return { err: e.message || "Failed to claim. Please try again." };
+    }
+
     await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
@@ -219,8 +235,6 @@ export function useKhatamState(slug: string) {
       return { err: e.message || "Failed to mark complete. Please try again." };
     }
 
-    setModal(null);
-    toast.success(`Barakallahu feek! Juz ${juz} ${Q_SHORT[q - 1]} completed`);
     await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
@@ -462,7 +476,7 @@ export function useKhatamState(slug: string) {
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onComplete, onSoloToggle,
+    getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, deactivateAdmin,

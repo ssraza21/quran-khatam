@@ -26,6 +26,63 @@ const STATIC_MARKERS: COBEOptions["markers"] = [
   { location: [40.7128, -74.0060], size: 0.05 }, // New York
 ]
 
+/** Points on a small circle in lat/lng space (approximate local tangent plane). */
+const RING_POINT_COUNT = 8
+const RADIATE_WAVES = 4
+const RADIATE_CYCLE_MS = 1800
+const RADIATE_MIN_DEG = 0.1
+const RADIATE_MAX_DEG = 1.8
+const SPAWN_POP_MS = 600
+
+function ringOffsets(lat: number, lng: number, radiusDeg: number): [number, number][] {
+  const latRad = (lat * Math.PI) / 180
+  const cosLat = Math.max(0.12, Math.cos(latRad))
+  const pts: [number, number][] = []
+  for (let i = 0; i < RING_POINT_COUNT; i++) {
+    const angle = (i / RING_POINT_COUNT) * Math.PI * 2
+    const dLat = radiusDeg * Math.cos(angle)
+    const dLng = (radiusDeg * Math.sin(angle)) / cosLat
+    pts.push([lat + dLat, lng + dLng])
+  }
+  return pts
+}
+
+function buildDynamicGlobeMarkers(markers: DynamicMarker[], now: number): NonNullable<COBEOptions["markers"]> {
+  const out: NonNullable<COBEOptions["markers"]> = []
+  for (const m of markers) {
+    const [lat, lng] = m.location
+    let baseSize = m.size
+
+    if (m.spawnedAt != null) {
+      const elapsed = now - m.spawnedAt
+      if (elapsed >= 0 && elapsed < SPAWN_POP_MS) {
+        const t = elapsed / SPAWN_POP_MS
+        const ease = 1 - (1 - t) ** 2
+        baseSize = m.size * (0.42 + 0.58 * ease) + Math.sin(t * Math.PI) * 0.038
+      }
+    }
+
+    if (m.isRecent) {
+      baseSize += Math.sin(now / 250) * 0.018
+    }
+
+    out.push({ location: [lat, lng], size: baseSize })
+
+    if (!m.isRecent) continue
+
+    for (let w = 0; w < RADIATE_WAVES; w++) {
+      const phase = ((now / RADIATE_CYCLE_MS + w / RADIATE_WAVES) % 1)
+      const radiusDeg = RADIATE_MIN_DEG + phase * (RADIATE_MAX_DEG - RADIATE_MIN_DEG)
+      const fade = (1 - phase) ** 2
+      const ringSize = 0.015 + 0.03 * fade
+      for (const loc of ringOffsets(lat, lng, radiusDeg)) {
+        out.push({ location: loc, size: ringSize })
+      }
+    }
+  }
+  return out
+}
+
 const BASE_GLOBE_CONFIG: Omit<COBEOptions, "markers" | "onRender" | "width" | "height"> = {
   devicePixelRatio: 2,
   phi: 0,
@@ -43,6 +100,8 @@ export interface DynamicMarker {
   location: [number, number];
   size: number;
   isRecent?: boolean;
+  /** When this marker appeared (ms since epoch) — drives a short spawn “pop”. */
+  spawnedAt?: number;
 }
 
 export function Globe({
@@ -100,13 +159,11 @@ export function Globe({
     window.addEventListener("resize", onResize)
     onResize()
 
-    const useDynamic = dynamicMarkers !== undefined
-
     const effectiveConfig: COBEOptions = config ?? {
       ...BASE_GLOBE_CONFIG,
       width: 800,
       height: 800,
-      markers: useDynamic ? [] : STATIC_MARKERS,
+      markers: markersRef.current !== undefined ? [] : STATIC_MARKERS,
       onRender: () => { },
     }
 
@@ -120,14 +177,11 @@ export function Globe({
         state.width = widthRef.current * 2
         state.height = widthRef.current * 2
 
-        if (useDynamic && markersRef.current) {
+        if (markersRef.current !== undefined) {
           const now = Date.now()
-          state.markers = markersRef.current.map(m => ({
-            location: m.location,
-            size: m.isRecent
-              ? m.size + Math.sin(now / 250) * 0.025
-              : m.size,
-          }))
+          state.markers = buildDynamicGlobeMarkers(markersRef.current, now)
+        } else {
+          state.markers = STATIC_MARKERS
         }
       },
     })

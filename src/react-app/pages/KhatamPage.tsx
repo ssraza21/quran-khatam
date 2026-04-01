@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
 import { COLORS, Q_SHORT } from "@/lib/constants";
@@ -5,10 +6,15 @@ import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
+import { buildWhatsAppKhatamMessage } from "@/lib/helpers";
 import { toast } from "sonner";
 
 export default function KhatamPage() {
   const { slug } = useParams<{ slug: string }>();
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
+  const [waCopied, setWaCopied] = useState(false);
+  const [juzModal, setJuzModal] = useState<number | null>(null);
 
   const state = useKhatamState(slug ?? "");
   const {
@@ -20,7 +26,7 @@ export default function KhatamPage() {
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onComplete, onSoloToggle,
+    getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, deactivateAdmin,
@@ -37,6 +43,16 @@ export default function KhatamPage() {
     }).catch(() => {
       toast.error("Failed to copy link");
     });
+  };
+
+  const waMessage = buildWhatsAppKhatamMessage(khatamName || "Khatam", slug ?? "", slots);
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
+
+  const handleWaCopy = () => {
+    navigator.clipboard.writeText(waMessage).then(() => {
+      setWaCopied(true);
+      setTimeout(() => setWaCopied(false), 2000);
+    }).catch(() => toast.error("Failed to copy"));
   };
 
   if (notFound) {
@@ -102,6 +118,14 @@ export default function KhatamPage() {
             >
               {isSolo ? "Copy Private Link" : "Share Link"}
             </button>
+            {!isSolo && (
+              <button
+                onClick={() => setShowWhatsApp(true)}
+                className="bg-[#25D366]/20 border border-[#25D366]/50 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-[#25D366]/35 transition-colors"
+              >
+                📲 WhatsApp
+              </button>
+            )}
             {!isSolo && (
               <Link
                 to={`/k/${slug}/metrics`}
@@ -198,6 +222,7 @@ export default function KhatamPage() {
               adminMode={adminMode} adminSelected={adminSelected}
               onSelect={(j, q) => setAdminSelected({ juz: j, q })}
               onOpenModal={(j, q) => setModal({ juz: j, q })}
+              onClaimJuz={juzNum => setJuzModal(juzNum)}
               isSolo={isSolo} onSoloToggle={onSoloToggle} />
           ))}
         </div>
@@ -367,7 +392,7 @@ export default function KhatamPage() {
         </section>
       )}
 
-      {/* Drawer Modal (community only) */}
+      {/* Quarter claim drawer (community only) */}
       {!isSolo && (
         <SlotDrawer
           slot={modalSlot}
@@ -376,8 +401,78 @@ export default function KhatamPage() {
           open={!!modal}
           onClose={() => setModal(null)}
           onBook={onBook}
+          onBookJuz={onBookJuz}
           onComplete={onComplete}
+          khatamName={khatamName || "Khatam"}
+          slug={slug ?? ""}
+          slots={slots}
         />
+      )}
+
+      {/* Entire-Juz claim drawer (community only) */}
+      {!isSolo && (
+        <SlotDrawer
+          slot={null}
+          juz={juzModal ?? 0}
+          q={0}
+          open={juzModal !== null}
+          onClose={() => setJuzModal(null)}
+          onBook={onBook}
+          onBookJuz={onBookJuz}
+          onComplete={onComplete}
+          khatamName={khatamName || "Khatam"}
+          slug={slug ?? ""}
+          slots={slots}
+        />
+      )}
+
+      {/* WhatsApp share drawer (community only) */}
+      {!isSolo && (
+        <Drawer open={showWhatsApp} onOpenChange={o => !o && setShowWhatsApp(false)}>
+          <DrawerContent className="max-w-lg mx-auto max-h-[90vh] flex flex-col">
+            <DrawerHeader className="pt-6 pb-3 flex-none">
+              <DrawerTitle className="text-xl" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
+                Share to WhatsApp
+              </DrawerTitle>
+              <p className="text-sm text-gray-400 mt-1">
+                Copy this message and paste it into your WhatsApp group. Participants can tap the link to claim their Juz.
+              </p>
+            </DrawerHeader>
+
+            <div className="px-4 pb-6 flex-1 overflow-y-auto">
+              <div className="bg-[#f0faf0] border border-green-200 rounded-xl px-4 py-3 mb-4 font-mono text-[11px] text-gray-600 leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
+                {waMessage}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleWaCopy}
+                  className={`flex-1 h-12 rounded-full text-sm font-semibold transition-all duration-200 ${
+                    waCopied
+                      ? "bg-green-600 text-white"
+                      : "bg-[#8B0000] hover:bg-[#6B0000] text-white"
+                  }`}
+                >
+                  {waCopied ? "Copied!" : "Copy Message"}
+                </button>
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 h-12 rounded-full text-sm font-semibold bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center justify-center transition-colors"
+                >
+                  Open in WhatsApp
+                </a>
+              </div>
+
+              <DrawerClose asChild>
+                <button className="w-full mt-3 h-10 rounded-full text-sm font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                  Done
+                </button>
+              </DrawerClose>
+            </div>
+          </DrawerContent>
+        </Drawer>
       )}
     </>
   );
