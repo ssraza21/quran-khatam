@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
+import { COUNTRIES } from "@/lib/countries";
 
 function nameToSlug(name: string): string {
   return name
@@ -23,6 +24,11 @@ export default function LandingPage() {
   const [cErr, setCErr] = useState("");
   const [cLoading, setCLoading] = useState(false);
   const [isSolo, setIsSolo] = useState(false);
+
+  // Location state (for create form)
+  const [cCountry, setCCountry] = useState("");
+  const [cCity, setCCity] = useState("");
+  const [cShowNames, setCShowNames] = useState(true);
 
   // Join form state
   const [jSlug, setJSlug] = useState("");
@@ -63,7 +69,18 @@ export default function LandingPage() {
 
     setCLoading(true);
     try {
-      const result = await api.createKhatam(cName.trim(), cSlug, isSolo ? "" : cPin, isSolo);
+      const selectedCountry = COUNTRIES.find(c => c.code === cCountry);
+      const result = await api.createKhatam(
+        cName.trim(),
+        cSlug,
+        isSolo ? "" : cPin,
+        isSolo,
+        cCity.trim() || undefined,
+        selectedCountry?.name,
+        selectedCountry?.lat,
+        selectedCountry?.lng,
+        isSolo ? undefined : cShowNames,
+      );
       navigate(`/k/${result.slug}`);
     } catch (err: any) {
       setCErr(err.message || "Failed to create khatam");
@@ -121,10 +138,18 @@ export default function LandingPage() {
             Quran Khatam
           </h1>
 
-          <p className="text-base md:text-lg text-white/70 max-w-[600px] mx-auto mb-10 leading-relaxed">
+          <p className="text-base md:text-lg text-white/70 max-w-[600px] mx-auto mb-8 leading-relaxed">
             Come together as a community to complete the recitation of the entire Quran.
             Create a khatam, share the link, and track progress together.
           </p>
+
+          <Link
+            to="/globe"
+            className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white/90 border border-white/20 hover:border-white/40 px-5 py-2.5 rounded-full transition-all duration-200"
+          >
+            <span>🌍</span>
+            <span>See the World Reciting</span>
+          </Link>
         </div>
       </section>
 
@@ -269,6 +294,59 @@ export default function LandingPage() {
                       />
                     </div>
                   </div>
+                )}
+
+                {/* Location (optional) */}
+                <div className="border-t border-gray-100 pt-4">
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <span>🌍</span>
+                    <span>Location</span>
+                    <span className="text-gray-300 normal-case font-normal tracking-normal">(optional)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <select
+                        value={cCountry}
+                        onChange={e => setCCountry(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors bg-white text-gray-700"
+                      >
+                        <option value="">Country</option>
+                        {COUNTRIES.map(c => (
+                          <option key={c.code} value={c.code}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        value={cCity}
+                        onChange={e => setCCity(e.target.value)}
+                        placeholder="City (optional)"
+                        maxLength={60}
+                        disabled={!cCountry}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                  {cCountry && (
+                    <p className="text-[11px] text-gray-400 mt-1.5">
+                      Completions from this khatam will light up the{" "}
+                      <Link to="/globe" className="text-[#8B0000] hover:underline">World Globe</Link>.
+                    </p>
+                  )}
+                </div>
+
+                {/* Show names on globe (community only) */}
+                {!isSolo && cCountry && (
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={cShowNames}
+                      onChange={e => setCShowNames(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#8B0000]"
+                    />
+                    <span className="text-xs text-gray-500">Show participant names on the globe</span>
+                  </label>
                 )}
 
                 {cErr && <p className="text-red-500 text-sm">{cErr}</p>}

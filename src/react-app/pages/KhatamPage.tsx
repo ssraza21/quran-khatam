@@ -1,29 +1,62 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
-import { COLORS, Q_SHORT } from "@/lib/constants";
+import { COLORS, JUZ_NAMES, Q_SHORT } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
+import { buildWhatsAppKhatamMessage } from "@/lib/helpers";
 import { toast } from "sonner";
 
 export default function KhatamPage() {
   const { slug } = useParams<{ slug: string }>();
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
+  const [waCopied, setWaCopied] = useState(false);
+  const [juzModal, setJuzModal] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"juz" | "quarters">("juz");
+
+  // Persistent claimer name — remembered across sessions
+  const [savedName, setSavedName] = useState<string>(() => localStorage.getItem("qk_claimer") ?? "");
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const persistName = (n: string) => {
+    setSavedName(n);
+    if (n) localStorage.setItem("qk_claimer", n);
+    else localStorage.removeItem("qk_claimer");
+  };
+
+  // Quick-claim from Juz grid (bypasses drawer when name is known)
+  const [quickClaimLoading, setQuickClaimLoading] = useState<number | null>(null);
+  const [shareAfterClaim, setShareAfterClaim] = useState<{ juz: number } | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleQuickClaim = async (juz: number) => {
+    if (!savedName) { setJuzModal(juz); return; }
+    setQuickClaimLoading(juz);
+    const res = await onBookJuz(juz, savedName);
+    setQuickClaimLoading(null);
+    if (res?.err) { toast.error(res.err); return; }
+    setShareAfterClaim({ juz });
+  };
 
   const state = useKhatamState(slug ?? "");
   const {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
+    showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onComplete, onSoloToggle,
+    getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
+    adminToggleGlobeNames,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -35,6 +68,16 @@ export default function KhatamPage() {
     }).catch(() => {
       toast.error("Failed to copy link");
     });
+  };
+
+  const waMessage = buildWhatsAppKhatamMessage(khatamName || "Khatam", slug ?? "", slots);
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
+
+  const handleWaCopy = () => {
+    navigator.clipboard.writeText(waMessage).then(() => {
+      setWaCopied(true);
+      setTimeout(() => setWaCopied(false), 2000);
+    }).catch(() => toast.error("Failed to copy"));
   };
 
   if (notFound) {
@@ -80,26 +123,21 @@ export default function KhatamPage() {
             style={{ fontFamily: "Playfair Display, serif" }}>
             {khatamName || "Khatam"}
           </h1>
-          <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
-            {khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}
-            {isSolo && (
-              <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
-                PERSONAL
-              </span>
-            )}
-            {adminMode && !isSolo && (
-              <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
-                ADMIN
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-center gap-3 mt-4">
+          <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
             <button
               onClick={handleShare}
               className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors"
             >
-              {isSolo ? "Copy Private Link" : "Share Link"}
+              {isSolo ? "Copy Private Link" : "Copy Link"}
             </button>
+            {!isSolo && (
+              <button
+                onClick={() => setShowWhatsApp(true)}
+                className="bg-[#25D366]/20 border border-[#25D366]/50 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-[#25D366]/35 transition-colors"
+              >
+                📲 WhatsApp
+              </button>
+            )}
             {!isSolo && (
               <Link
                 to={`/k/${slug}/metrics`}
@@ -179,20 +217,185 @@ export default function KhatamPage() {
         </div>
       </div>
 
-      {/* Juz List */}
+      {/* View Toggle + Juz List */}
       <div className="max-w-[1200px] mx-auto px-5 py-6">
-        {isSolo && (
-          <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
+        {/* Toggle (community only — solo has no juz-level claim) */}
+        {!isSolo && !adminMode && (
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <button
+                onClick={() => setViewMode("juz")}
+                className={`px-5 py-2 text-sm font-medium transition-colors ${viewMode === "juz" ? "bg-[#8B0000] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                By Juz
+              </button>
+              <button
+                onClick={() => setViewMode("quarters")}
+                className={`px-5 py-2 text-sm font-medium transition-colors ${viewMode === "quarters" ? "bg-[#8B0000] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                By Quarter
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 hidden sm:block">
+              {viewMode === "juz" ? "Click a Juz to claim all 4 quarters at once" : "Expand a Juz to claim individual quarters"}
+            </p>
+          </div>
         )}
-        <div className="flex flex-col gap-2.5">
-          {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
-            <JuzRow key={juz} juz={juz} slots={slots}
-              adminMode={adminMode} adminSelected={adminSelected}
-              onSelect={(j, q) => setAdminSelected({ juz: j, q })}
-              onOpenModal={(j, q) => setModal({ juz: j, q })}
-              isSolo={isSolo} onSoloToggle={onSoloToggle} />
-          ))}
-        </div>
+
+        {/* Juz Grid View */}
+        {(viewMode === "juz" && !isSolo && !adminMode) && (
+          <>
+            {/* "Claiming as" identity bar */}
+            <div className="mb-4 flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+              {editingName ? (
+                <form
+                  className="flex items-center gap-2 flex-1"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const n = nameInput.trim();
+                    if (n) persistName(n);
+                    setEditingName(false);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    placeholder="Enter your name"
+                    maxLength={60}
+                    className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-[#8B0000] transition-colors"
+                  />
+                  <button type="submit" className="text-sm font-semibold text-[#8B0000] px-3 py-1.5 rounded-lg bg-[#FFF5F5] hover:bg-[#8B0000] hover:text-white transition-colors">
+                    Save
+                  </button>
+                  <button type="button" onClick={() => setEditingName(false)} className="text-sm text-gray-400 hover:text-gray-600">
+                    Cancel
+                  </button>
+                </form>
+              ) : savedName ? (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-[#FFF5F5] border border-[#8B0000]/20 flex items-center justify-center shrink-0">
+                    <span className="text-[#8B0000] text-sm font-bold">{savedName[0].toUpperCase()}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400 leading-none mb-0.5">Claiming as</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{savedName}</p>
+                  </div>
+                  <button
+                    onClick={() => { setNameInput(savedName); setEditingName(true); }}
+                    className="text-xs text-gray-400 hover:text-[#8B0000] transition-colors shrink-0 font-medium"
+                  >
+                    Change
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-gray-400 text-lg">
+                    👤
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-500">Who's claiming?</p>
+                    <p className="text-xs text-gray-400">Set your name to claim Juz in one tap</p>
+                  </div>
+                  <button
+                    onClick={() => { setNameInput(""); setEditingName(true); }}
+                    className="text-xs font-semibold text-[#8B0000] bg-[#FFF5F5] border border-[#8B0000]/20 px-3 py-1.5 rounded-full hover:bg-[#8B0000] hover:text-white transition-colors shrink-0"
+                  >
+                    Set name
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Juz cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => {
+                const juzSlots = slots.filter(s => s.juz === juz);
+                const doneCount = juzSlots.filter(s => s.status === "dn").length;
+                const claimedCount = juzSlots.filter(s => s.status === "cl").length;
+                const allDone = doneCount === 4;
+                const allAvailable = juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
+                const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
+                const hasClaimed = claimedCount > 0 || (doneCount > 0 && !allDone);
+                const isLoading = quickClaimLoading === juz;
+
+                return (
+                  <div
+                    key={juz}
+                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${
+                      allAvailable && !isLoading ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
+                    }`}
+                    style={{
+                      background: isLoading ? "#FFF5F5" : allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
+                      borderColor: isLoading ? "#8B0000" : allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
+                    }}
+                    onClick={() => allAvailable && !isLoading && handleQuickClaim(juz)}
+                  >
+                    <div
+                      className="text-2xl font-bold leading-none"
+                      style={{ fontFamily: "'Playfair Display', serif", color: allDone ? "#2E7D32" : "#8B0000" }}
+                    >
+                      {isLoading ? (
+                        <span className="inline-block w-5 h-5 border-2 border-[#8B0000] border-t-transparent rounded-full animate-spin align-middle" />
+                      ) : juz}
+                    </div>
+                    <div
+                      className="text-[11px] text-gray-400 italic truncate mt-0.5"
+                      style={{ fontFamily: "'Amiri', serif" }}
+                    >
+                      {JUZ_NAMES[juz - 1]}
+                    </div>
+
+                    <div className="flex gap-0.5 mt-2.5">
+                      {juzSlots.map((s, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 h-1.5 rounded-full"
+                          style={{
+                            background: s.status === "dn" ? COLORS.dn.accent : s.status === "cl" ? COLORS.cl.accent : "#E0E0E0",
+                          }}
+                        />
+                      ))}
+                    </div>
+
+                    {names.length > 0 && (
+                      <p className="text-[11px] text-gray-600 mt-2 font-medium truncate leading-tight">
+                        {names.join(", ")}
+                      </p>
+                    )}
+
+                    {allDone && <p className="text-[11px] text-green-700 mt-2 font-semibold">✓ Complete</p>}
+
+                    {allAvailable && !isLoading && (
+                      <div className="mt-2.5 text-[11px] font-semibold text-[#8B0000] opacity-60">
+                        {savedName ? `Tap to claim` : "Tap to claim →"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Quarters Accordion View */}
+        {(viewMode === "quarters" || isSolo || adminMode) && (
+          <>
+            {isSolo && (
+              <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
+            )}
+            <div className="flex flex-col gap-2.5">
+              {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
+                <JuzRow key={juz} juz={juz} slots={slots}
+                  adminMode={adminMode} adminSelected={adminSelected}
+                  onSelect={(j, q) => setAdminSelected({ juz: j, q })}
+                  onOpenModal={(j, q) => setModal({ juz: j, q })}
+                  onClaimJuz={juzNum => setJuzModal(juzNum)}
+                  isSolo={isSolo} onSoloToggle={onSoloToggle} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Legend */}
@@ -341,6 +544,16 @@ export default function KhatamPage() {
                       Delete This Khatam
                     </button>
                   </div>
+                  {locationCountry && (
+                    <div className="mt-3 pt-3 border-t border-white/10">
+                      <button
+                        onClick={adminToggleGlobeNames}
+                        className="bg-white/10 border border-white/25 text-white/80 px-5 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors"
+                      >
+                        🌍 {showNamesOnGlobe ? "Hide names on World Globe" : "Show names on World Globe"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -349,7 +562,7 @@ export default function KhatamPage() {
         </section>
       )}
 
-      {/* Drawer Modal (community only) */}
+      {/* Quarter claim drawer (community only) */}
       {!isSolo && (
         <SlotDrawer
           slot={modalSlot}
@@ -358,8 +571,123 @@ export default function KhatamPage() {
           open={!!modal}
           onClose={() => setModal(null)}
           onBook={onBook}
+          onBookJuz={onBookJuz}
           onComplete={onComplete}
+          khatamName={khatamName || "Khatam"}
+          slug={slug ?? ""}
+          slots={slots}
+          defaultName={savedName}
+          onNameUsed={persistName}
         />
+      )}
+
+      {/* Entire-Juz claim drawer (community only) — fallback when no name saved */}
+      {!isSolo && (
+        <SlotDrawer
+          slot={null}
+          juz={juzModal ?? 0}
+          q={0}
+          open={juzModal !== null}
+          onClose={() => setJuzModal(null)}
+          onBook={onBook}
+          onBookJuz={onBookJuz}
+          onComplete={onComplete}
+          khatamName={khatamName || "Khatam"}
+          slug={slug ?? ""}
+          slots={slots}
+          defaultName={savedName}
+          onNameUsed={n => { persistName(n); setJuzModal(null); setShareAfterClaim({ juz: juzModal! }); }}
+        />
+      )}
+
+      {/* Floating share bar after quick-claim */}
+      {shareAfterClaim && (() => {
+        const shareMsg = buildWhatsAppKhatamMessage(khatamName || "Khatam", slug ?? "", slots);
+        const shareUrl = `https://wa.me/?text=${encodeURIComponent(shareMsg)}`;
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t border-gray-200 shadow-2xl animate-slideUp">
+            <div className="max-w-lg mx-auto">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                  <span className="text-green-600 text-sm">✓</span>
+                </div>
+                <p className="text-sm font-semibold text-gray-800">
+                  Juz {shareAfterClaim.juz} claimed as <span className="text-[#8B0000]">{savedName}</span>
+                </p>
+                <button onClick={() => setShareAfterClaim(null)} className="ml-auto text-gray-300 hover:text-gray-500 text-lg leading-none">×</button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareMsg).then(() => {
+                      setShareCopied(true);
+                      setTimeout(() => setShareCopied(false), 2000);
+                    });
+                  }}
+                  className={`flex-1 h-10 rounded-full text-sm font-semibold transition-colors ${shareCopied ? "bg-green-600 text-white" : "bg-[#8B0000] hover:bg-[#6B0000] text-white"}`}
+                >
+                  {shareCopied ? "Copied!" : "Copy WhatsApp Message"}
+                </button>
+                <a
+                  href={shareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 h-10 rounded-full text-sm font-semibold bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center justify-center transition-colors"
+                >
+                  Open in WhatsApp
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* WhatsApp share drawer (community only) */}
+      {!isSolo && (
+        <Drawer open={showWhatsApp} onOpenChange={o => !o && setShowWhatsApp(false)}>
+          <DrawerContent className="max-w-lg mx-auto max-h-[90vh] flex flex-col">
+            <DrawerHeader className="pt-6 pb-3 flex-none">
+              <DrawerTitle className="text-xl" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
+                Share to WhatsApp
+              </DrawerTitle>
+              <p className="text-sm text-gray-400 mt-1">
+                Copy this message and paste it into your WhatsApp group. Participants can tap the link to claim their Juz.
+              </p>
+            </DrawerHeader>
+
+            <div className="px-4 pb-6 flex-1 overflow-y-auto">
+              <div className="bg-[#f0faf0] border border-green-200 rounded-xl px-4 py-3 mb-4 font-mono text-[11px] text-gray-600 leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
+                {waMessage}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleWaCopy}
+                  className={`flex-1 h-12 rounded-full text-sm font-semibold transition-all duration-200 ${waCopied
+                    ? "bg-green-600 text-white"
+                    : "bg-[#8B0000] hover:bg-[#6B0000] text-white"
+                    }`}
+                >
+                  {waCopied ? "Copied!" : "Copy Message"}
+                </button>
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 h-12 rounded-full text-sm font-semibold bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center justify-center transition-colors"
+                >
+                  Open in WhatsApp
+                </a>
+              </div>
+
+              <DrawerClose asChild>
+                <button className="w-full mt-3 h-10 rounded-full text-sm font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                  Done
+                </button>
+              </DrawerClose>
+            </div>
+          </DrawerContent>
+        </Drawer>
       )}
     </>
   );

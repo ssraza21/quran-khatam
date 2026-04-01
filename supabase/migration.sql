@@ -64,3 +64,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE khatam_public.khatams;
 
 -- Migration: Add is_solo column for personal khatam tracking
 ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS is_solo BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Migration: Add location and globe settings for interactive globe feature
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS location_city TEXT;
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS location_country TEXT;
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS location_lat REAL;
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS location_lng REAL;
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS show_names_on_globe BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_khatams_location ON khatam_public.khatams(location_lat, location_lng) WHERE location_lat IS NOT NULL;
