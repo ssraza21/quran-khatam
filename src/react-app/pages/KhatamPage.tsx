@@ -322,9 +322,8 @@ export default function KhatamPage() {
                 return (
                   <div
                     key={juz}
-                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${
-                      allAvailable && !isLoading ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
-                    }`}
+                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${allAvailable && !isLoading ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
+                      }`}
                     style={{
                       background: isLoading ? "#FFF5F5" : allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
                       borderColor: isLoading ? "#8B0000" : allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
@@ -606,7 +605,7 @@ export default function KhatamPage() {
         const shareUrl = `https://wa.me/?text=${encodeURIComponent(shareMsg)}`;
         return (
           <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t border-gray-200 shadow-2xl animate-slideUp">
-            <div className="max-w-lg mx-auto">
+            <div className="max-w-lg mx-auto pb-4">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                   <span className="text-green-600 text-sm">✓</span>
@@ -626,7 +625,7 @@ export default function KhatamPage() {
                   }}
                   className={`flex-1 h-10 rounded-full text-sm font-semibold transition-colors ${shareCopied ? "bg-green-600 text-white" : "bg-[#8B0000] hover:bg-[#6B0000] text-white"}`}
                 >
-                  {shareCopied ? "Copied!" : "Copy WhatsApp Message"}
+                  {shareCopied ? "Copied!" : "Copy Message"}
                 </button>
                 <a
                   href={shareUrl}

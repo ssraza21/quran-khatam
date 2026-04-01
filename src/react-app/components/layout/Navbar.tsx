@@ -7,7 +7,7 @@ import {
   DrawerClose,
   DrawerContent,
   DrawerHeader,
-  DrawerTitle,
+  // DrawerTitle,
   DrawerTrigger,
   DrawerDescription,
 } from "@/components/ui/drawer";
@@ -35,10 +35,10 @@ export default function Navbar() {
 
   const navItems = slug
     ? [
-        ...baseItems,
-        { name: "Tracker", path: `/k/${slug}`, icon: Activity },
-        { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
-      ]
+      ...baseItems,
+      { name: "Tracker", path: `/k/${slug}`, icon: Activity },
+      { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
+    ]
     : baseItems;
 
   const isNavItemActive = (item: NavLinkItem) => {
@@ -141,28 +141,7 @@ export default function Navbar() {
                   "bg-linear-to-b from-[#FFFCFC] via-white to-[#F9F8F7] p-0 shadow-2xl shadow-[#1a0000]/12 outline-none",
                 )}
               >
-                <DrawerHeader
-                  className={cn(
-                    "relative overflow-hidden border-b border-white/10 px-6 pb-8 pt-10 text-white",
-                    "bg-linear-to-br from-[#8B0000] via-[#750000] to-[#4A0000]",
-                  )}
-                >
-                  <div
-                    className="pointer-events-none absolute inset-0 opacity-[0.06]"
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                    }}
-                    aria-hidden
-                  />
-                  <DrawerTitle
-                    className="relative text-xl font-semibold tracking-tight"
-                    style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-                  >
-                    Quran Khatam
-                  </DrawerTitle>
-                  <p className="relative mt-1 text-sm font-medium text-white/75">Menu</p>
-                  <DrawerDescription className="sr-only">Primary navigation</DrawerDescription>
-                </DrawerHeader>
+
 
                 <div className="flex flex-col gap-2 p-4">
                   {navItems.map((item) => {
