@@ -76,24 +76,24 @@ export const api = {
     });
   },
 
-  claim(slug: string, juz: number, q: number, name: string) {
+  claim(slug: string, juz: number, q: number, name: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/claim`, {
       method: "POST",
-      body: JSON.stringify({ juz, q, name }),
+      body: JSON.stringify({ juz, q, name, khatam_id: khatamId }),
     });
   },
 
-  claimJuz(slug: string, juz: number, name: string) {
+  claimJuz(slug: string, juz: number, name: string, khatamId?: number) {
     return request<{ ok: boolean; claimed: number }>(`/khatams/${slug}/claim-juz`, {
       method: "POST",
-      body: JSON.stringify({ juz, name }),
+      body: JSON.stringify({ juz, name, khatam_id: khatamId }),
     });
   },
 
-  complete(slug: string, juz: number, q: number, name: string) {
+  complete(slug: string, juz: number, q: number, name: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/complete`, {
       method: "POST",
-      body: JSON.stringify({ juz, q, name }),
+      body: JSON.stringify({ juz, q, name, khatam_id: khatamId }),
     });
   },
 

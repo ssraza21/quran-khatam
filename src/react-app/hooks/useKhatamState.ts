@@ -197,13 +197,21 @@ export function useKhatamState(slug: string) {
     if (slot.status !== "av") return { err: "This quarter was just claimed. Please choose another." };
     if (countActive(name) >= 8) return { err: "You've reached the limit of 8 quarters. Complete your current portions first." };
 
+    // Optimistic update — UI is instant; revert on error
+    const now = new Date().toISOString();
+    setSlots(prev => prev.map(s =>
+      s.juz === juz && s.q === q ? { ...s, status: "cl" as const, by: name, at: now } : s
+    ));
+
     try {
-      await api.claim(slug, juz, q, name);
+      await api.claim(slug, juz, q, name, selectedKhatamId ?? undefined);
     } catch (e: any) {
+      setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
       return { err: e.message || "Failed to claim. Please try again." };
     }
 
-    await loadSlots(selectedKhatamId!);
+    // Realtime subscription handles slot refresh for all clients including this one.
+    // Only reload aggregate counts.
     await loadKhatams();
   };
 
@@ -212,13 +220,23 @@ export function useKhatamState(slug: string) {
     if (juzSlots.some(s => s.status !== "av")) return { err: "Some quarters in this Juz are no longer available." };
     if (countActive(name) + 4 > 8) return { err: "Claiming a full Juz would exceed the limit of 8 active quarters." };
 
+    // Optimistic update
+    const now = new Date().toISOString();
+    setSlots(prev => prev.map(s =>
+      s.juz === juz ? { ...s, status: "cl" as const, by: name, at: now } : s
+    ));
+
     try {
-      await api.claimJuz(slug, juz, name);
+      await api.claimJuz(slug, juz, name, selectedKhatamId ?? undefined);
     } catch (e: any) {
+      // Revert — restore original state for all 4 quarters
+      setSlots(prev => prev.map(s => {
+        const orig = juzSlots.find(o => o.juz === s.juz && o.q === s.q);
+        return orig && s.juz === juz ? orig : s;
+      }));
       return { err: e.message || "Failed to claim. Please try again." };
     }
 
-    await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
 
@@ -226,13 +244,19 @@ export function useKhatamState(slug: string) {
     const slot = getSlot(juz, q);
     if (slot.by && name.toLowerCase() !== slot.by.toLowerCase()) return { err: `This was claimed by ${slot.by}. Names don't match.` };
 
+    // Optimistic update
+    const now = new Date().toISOString();
+    setSlots(prev => prev.map(s =>
+      s.juz === juz && s.q === q ? { ...s, status: "dn" as const, done_at: now } : s
+    ));
+
     try {
-      await api.complete(slug, juz, q, name);
+      await api.complete(slug, juz, q, name, selectedKhatamId ?? undefined);
     } catch (e: any) {
+      setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
       return { err: e.message || "Failed to mark complete. Please try again." };
     }
 
-    await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
 
