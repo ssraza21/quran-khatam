@@ -209,14 +209,11 @@ export function useKhatamState(slug: string) {
 
   const onBookJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
     const juzSlots = slots.filter(s => s.juz === juz);
-    const unavailable = juzSlots.filter(s => s.status !== "av");
-    if (unavailable.length > 0) return { err: "Some quarters in this Juz are no longer available." };
+    if (juzSlots.some(s => s.status !== "av")) return { err: "Some quarters in this Juz are no longer available." };
     if (countActive(name) + 4 > 8) return { err: "Claiming a full Juz would exceed the limit of 8 active quarters." };
 
     try {
-      for (const s of juzSlots) {
-        await api.claim(slug, juz, s.q, name);
-      }
+      await api.claimJuz(slug, juz, name);
     } catch (e: any) {
       return { err: e.message || "Failed to claim. Please try again." };
     }

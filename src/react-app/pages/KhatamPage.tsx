@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
-import { COLORS, Q_SHORT } from "@/lib/constants";
+import { COLORS, JUZ_NAMES, Q_SHORT } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
@@ -15,6 +15,7 @@ export default function KhatamPage() {
   const [showWhatsApp, setShowWhatsApp] = useState(false);
   const [waCopied, setWaCopied] = useState(false);
   const [juzModal, setJuzModal] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"juz" | "quarters">("juz");
 
   const state = useKhatamState(slug ?? "");
   const {
@@ -98,25 +99,12 @@ export default function KhatamPage() {
             style={{ fontFamily: "Playfair Display, serif" }}>
             {khatamName || "Khatam"}
           </h1>
-          <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
-            {khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}
-            {isSolo && (
-              <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
-                PERSONAL
-              </span>
-            )}
-            {adminMode && !isSolo && (
-              <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-semibold tracking-wider">
-                ADMIN
-              </span>
-            )}
-          </div>
           <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
             <button
               onClick={handleShare}
               className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors"
             >
-              {isSolo ? "Copy Private Link" : "Share Link"}
+              {isSolo ? "Copy Private Link" : "Copy Link"}
             </button>
             {!isSolo && (
               <button
@@ -134,12 +122,6 @@ export default function KhatamPage() {
                 View Metrics
               </Link>
             )}
-            <Link
-              to="/globe"
-              className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
-            >
-              🌍 World Globe
-            </Link>
           </div>
         </div>
       </header>
@@ -211,21 +193,121 @@ export default function KhatamPage() {
         </div>
       </div>
 
-      {/* Juz List */}
+      {/* View Toggle + Juz List */}
       <div className="max-w-[1200px] mx-auto px-5 py-6">
-        {isSolo && (
-          <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
+        {/* Toggle (community only — solo has no juz-level claim) */}
+        {!isSolo && !adminMode && (
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <button
+                onClick={() => setViewMode("juz")}
+                className={`px-5 py-2 text-sm font-medium transition-colors ${viewMode === "juz" ? "bg-[#8B0000] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                By Juz
+              </button>
+              <button
+                onClick={() => setViewMode("quarters")}
+                className={`px-5 py-2 text-sm font-medium transition-colors ${viewMode === "quarters" ? "bg-[#8B0000] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                By Quarter
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 hidden sm:block">
+              {viewMode === "juz" ? "Click a Juz to claim all 4 quarters at once" : "Expand a Juz to claim individual quarters"}
+            </p>
+          </div>
         )}
-        <div className="flex flex-col gap-2.5">
-          {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
-            <JuzRow key={juz} juz={juz} slots={slots}
-              adminMode={adminMode} adminSelected={adminSelected}
-              onSelect={(j, q) => setAdminSelected({ juz: j, q })}
-              onOpenModal={(j, q) => setModal({ juz: j, q })}
-              onClaimJuz={juzNum => setJuzModal(juzNum)}
-              isSolo={isSolo} onSoloToggle={onSoloToggle} />
-          ))}
-        </div>
+
+        {/* Juz Grid View */}
+        {(viewMode === "juz" && !isSolo && !adminMode) && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => {
+              const juzSlots = slots.filter(s => s.juz === juz);
+              const doneCount = juzSlots.filter(s => s.status === "dn").length;
+              const claimedCount = juzSlots.filter(s => s.status === "cl").length;
+              const allDone = doneCount === 4;
+              const allAvailable = juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
+              const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
+              const hasClaimed = claimedCount > 0 || (doneCount > 0 && !allDone);
+
+              return (
+                <div
+                  key={juz}
+                  onClick={() => allAvailable && setJuzModal(juz)}
+                  className={`rounded-2xl p-4 border transition-all duration-200 select-none ${
+                    allAvailable
+                      ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0"
+                      : ""
+                  }`}
+                  style={{
+                    background: allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
+                    borderColor: allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
+                  }}
+                >
+                  <div
+                    className="text-2xl font-bold leading-none"
+                    style={{ fontFamily: "'Playfair Display', serif", color: allDone ? "#2E7D32" : "#8B0000" }}
+                  >
+                    {juz}
+                  </div>
+                  <div
+                    className="text-[11px] text-gray-400 italic truncate mt-0.5"
+                    style={{ fontFamily: "'Amiri', serif" }}
+                  >
+                    {JUZ_NAMES[juz - 1]}
+                  </div>
+
+                  <div className="flex gap-0.5 mt-2.5">
+                    {juzSlots.map((s, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 h-1.5 rounded-full"
+                        style={{
+                          background: s.status === "dn" ? COLORS.dn.accent : s.status === "cl" ? COLORS.cl.accent : "#E0E0E0",
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {names.length > 0 && (
+                    <p className="text-[11px] text-gray-600 mt-2 font-medium truncate leading-tight">
+                      {names.join(", ")}
+                    </p>
+                  )}
+
+                  {allDone && (
+                    <p className="text-[11px] text-green-700 mt-2 font-semibold">✓ Complete</p>
+                  )}
+
+                  {allAvailable && (
+                    <div className="mt-2.5 text-[11px] font-semibold text-[#8B0000] opacity-70">
+                      Tap to claim →
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Quarters Accordion View */}
+        {(viewMode === "quarters" || isSolo || adminMode) && (
+          <>
+            {isSolo && (
+              <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
+            )}
+            <div className="flex flex-col gap-2.5">
+              {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
+                <JuzRow key={juz} juz={juz} slots={slots}
+                  adminMode={adminMode} adminSelected={adminSelected}
+                  onSelect={(j, q) => setAdminSelected({ juz: j, q })}
+                  onOpenModal={(j, q) => setModal({ juz: j, q })}
+                  onClaimJuz={juzNum => setJuzModal(juzNum)}
+                  isSolo={isSolo} onSoloToggle={onSoloToggle} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Legend */}
@@ -447,11 +529,10 @@ export default function KhatamPage() {
               <div className="flex gap-2">
                 <button
                   onClick={handleWaCopy}
-                  className={`flex-1 h-12 rounded-full text-sm font-semibold transition-all duration-200 ${
-                    waCopied
-                      ? "bg-green-600 text-white"
-                      : "bg-[#8B0000] hover:bg-[#6B0000] text-white"
-                  }`}
+                  className={`flex-1 h-12 rounded-full text-sm font-semibold transition-all duration-200 ${waCopied
+                    ? "bg-green-600 text-white"
+                    : "bg-[#8B0000] hover:bg-[#6B0000] text-white"
+                    }`}
                 >
                   {waCopied ? "Copied!" : "Copy Message"}
                 </button>

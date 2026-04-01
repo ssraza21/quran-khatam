@@ -83,6 +83,13 @@ export const api = {
     });
   },
 
+  claimJuz(slug: string, juz: number, name: string) {
+    return request<{ ok: boolean; claimed: number }>(`/khatams/${slug}/claim-juz`, {
+      method: "POST",
+      body: JSON.stringify({ juz, name }),
+    });
+  },
+
   complete(slug: string, juz: number, q: number, name: string) {
     return request<{ ok: boolean }>(`/khatams/${slug}/complete`, {
       method: "POST",

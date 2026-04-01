@@ -264,6 +264,60 @@ app.post("/api/khatams/:slug/claim", async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/khatams/:slug/claim-juz — Claim all available quarters of a Juz atomically
+app.post("/api/khatams/:slug/claim-juz", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { juz, name } = await c.req.json<{ juz: number; name: string }>();
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  if (!juz || juz < 1 || juz > 30) return c.json({ error: "Invalid Juz number" }, 400);
+
+  const khatam = await getLatestKhatam(db, slug);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
+
+  // Check how many active claims this person already has
+  const { count: activeCount } = await db
+    .from("slots")
+    .select("*", { count: "exact", head: true })
+    .eq("khatam_id", khatam.id)
+    .eq("status", "cl")
+    .ilike("claimed_by", name.trim());
+
+  if ((activeCount ?? 0) + 4 > 8) {
+    return c.json({ error: "Claiming a full Juz would exceed the limit of 8 active quarters." }, 400);
+  }
+
+  // Verify all 4 quarters are available before claiming
+  const { count: availableCount } = await db
+    .from("slots")
+    .select("*", { count: "exact", head: true })
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz)
+    .eq("status", "av");
+
+  if ((availableCount ?? 0) < 4) {
+    return c.json({ error: "Some quarters in this Juz are no longer available." }, 409);
+  }
+
+  // Claim all 4 quarters in a single DB update
+  const { data, error } = await db
+    .from("slots")
+    .update({ status: "cl", claimed_by: name.trim(), claimed_at: new Date().toISOString() })
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz)
+    .eq("status", "av")
+    .select();
+
+  if (error) return c.json({ error: "Failed to claim" }, 500);
+  if (!data || data.length === 0) return c.json({ error: "Some quarters in this Juz are no longer available." }, 409);
+
+  await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true, claimed: data.length });
+});
+
 // POST /api/khatams/:slug/complete
 app.post("/api/khatams/:slug/complete", async (c) => {
   const db = createServiceClient(c.env);
