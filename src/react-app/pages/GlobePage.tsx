@@ -21,34 +21,34 @@ interface DemoSpot {
 }
 
 const DEMO_SPOTS: DemoSpot[] = [
-  { lat: 40.7128,   lng: -74.0060,  location: "New York, US",             name: "Ahmed",     juz: 2,  q: 1 },
-  { lat: 51.5074,   lng: -0.1278,   location: "London, UK",               name: "Fatima",    juz: 7,  q: 3 },
-  { lat: 21.3891,   lng: 39.8579,   location: "Mecca, Saudi Arabia",      name: "Muhammad",  juz: 1,  q: 1 },
-  { lat: 24.8607,   lng: 67.0011,   location: "Karachi, Pakistan",        name: "Sana",      juz: 15, q: 2 },
-  { lat: 30.0444,   lng: 31.2357,   location: "Cairo, Egypt",             name: "Noor",      juz: 18, q: 4 },
-  { lat: 41.8781,   lng: -87.6298,  location: "Chicago, US",              name: "Omar",      juz: 5,  q: 2 },
-  { lat: 3.1390,    lng: 101.6869,  location: "Kuala Lumpur, Malaysia",   name: "Hana",      juz: 22, q: 1 },
-  { lat: 43.6532,   lng: -79.3832,  location: "Toronto, Canada",          name: "Ibrahim",   juz: 29, q: 3 },
-  { lat: 41.0082,   lng: 28.9784,   location: "Istanbul, Turkey",         name: "Zainab",    juz: 11, q: 4 },
-  { lat: 25.2048,   lng: 55.2708,   location: "Dubai, UAE",               name: "Ali",       juz: 8,  q: 2 },
-  { lat: 52.4862,   lng: -1.8904,   location: "Birmingham, UK",           name: "Yusuf",     juz: 14, q: 1 },
-  { lat: 6.5244,    lng: 3.3792,    location: "Lagos, Nigeria",           name: "Umar",      juz: 25, q: 3 },
-  { lat: 23.8103,   lng: 90.4125,   location: "Dhaka, Bangladesh",        name: "Ruqayyah",  juz: 30, q: 4 },
-  { lat: -6.2088,   lng: 106.8456,  location: "Jakarta, Indonesia",       name: "Idris",     juz: 17, q: 2 },
-  { lat: 34.0522,   lng: -118.2437, location: "Los Angeles, US",          name: "Maryam",    juz: 3,  q: 3 },
-  { lat: 31.5204,   lng: 74.3587,   location: "Lahore, Pakistan",         name: "Khalid",    juz: 20, q: 1 },
-  { lat: 33.5731,   lng: -7.5898,   location: "Casablanca, Morocco",      name: "Layla",     juz: 9,  q: 4 },
-  { lat: 48.8566,   lng: 2.3522,    location: "Paris, France",            name: "Khadija",   juz: 26, q: 2 },
-  { lat: 29.7604,   lng: -95.3698,  location: "Houston, US",              name: "Bilal",     juz: 12, q: 3 },
-  { lat: -33.8688,  lng: 151.2093,  location: "Sydney, Australia",        name: "Mariam",    juz: 4,  q: 1 },
-  { lat: 24.7136,   lng: 46.6753,   location: "Riyadh, Saudi Arabia",     name: "Dawood",    juz: 23, q: 2 },
-  { lat: 52.3676,   lng: 4.9041,    location: "Amsterdam, Netherlands",   name: "Hassan",    juz: 16, q: 4 },
-  { lat: 28.6139,   lng: 77.2090,   location: "Delhi, India",             name: "Amina",     juz: 28, q: 1 },
-  { lat: -1.2921,   lng: 36.8219,   location: "Nairobi, Kenya",           name: "Tariq",     juz: 6,  q: 3 },
-  { lat: 37.7749,   lng: -122.4194, location: "San Francisco, US",        name: "Samira",    juz: 19, q: 2 },
-  { lat: 53.4808,   lng: -2.2426,   location: "Manchester, UK",           name: "Zayd",      juz: 24, q: 4 },
-  { lat: -37.8136,  lng: 144.9631,  location: "Melbourne, Australia",     name: "Sulayman",  juz: 10, q: 1 },
-  { lat: 38.9072,   lng: -77.0369,  location: "Washington DC, US",        name: "Rania",     juz: 27, q: 3 },
+  { lat: 40.7128, lng: -74.0060, location: "New York, US", name: "Ahmed", juz: 2, q: 1 },
+  { lat: 51.5074, lng: -0.1278, location: "London, UK", name: "Fatima", juz: 7, q: 3 },
+  { lat: 21.3891, lng: 39.8579, location: "Mecca, Saudi Arabia", name: "Muhammad", juz: 1, q: 1 },
+  { lat: 24.8607, lng: 67.0011, location: "Karachi, Pakistan", name: "Sana", juz: 15, q: 2 },
+  { lat: 30.0444, lng: 31.2357, location: "Cairo, Egypt", name: "Noor", juz: 18, q: 4 },
+  { lat: 41.8781, lng: -87.6298, location: "Chicago, US", name: "Omar", juz: 5, q: 2 },
+  { lat: 3.1390, lng: 101.6869, location: "Kuala Lumpur, Malaysia", name: "Hana", juz: 22, q: 1 },
+  { lat: 43.6532, lng: -79.3832, location: "Toronto, Canada", name: "Ibrahim", juz: 29, q: 3 },
+  { lat: 41.0082, lng: 28.9784, location: "Istanbul, Turkey", name: "Zainab", juz: 11, q: 4 },
+  { lat: 25.2048, lng: 55.2708, location: "Dubai, UAE", name: "Ali", juz: 8, q: 2 },
+  { lat: 52.4862, lng: -1.8904, location: "Birmingham, UK", name: "Yusuf", juz: 14, q: 1 },
+  { lat: 6.5244, lng: 3.3792, location: "Lagos, Nigeria", name: "Umar", juz: 25, q: 3 },
+  { lat: 23.8103, lng: 90.4125, location: "Dhaka, Bangladesh", name: "Ruqayyah", juz: 30, q: 4 },
+  { lat: -6.2088, lng: 106.8456, location: "Jakarta, Indonesia", name: "Idris", juz: 17, q: 2 },
+  { lat: 34.0522, lng: -118.2437, location: "Los Angeles, US", name: "Maryam", juz: 3, q: 3 },
+  { lat: 31.5204, lng: 74.3587, location: "Lahore, Pakistan", name: "Khalid", juz: 20, q: 1 },
+  { lat: 33.5731, lng: -7.5898, location: "Casablanca, Morocco", name: "Layla", juz: 9, q: 4 },
+  { lat: 48.8566, lng: 2.3522, location: "Paris, France", name: "Khadija", juz: 26, q: 2 },
+  { lat: 29.7604, lng: -95.3698, location: "Houston, US", name: "Bilal", juz: 12, q: 3 },
+  { lat: -33.8688, lng: 151.2093, location: "Sydney, Australia", name: "Mariam", juz: 4, q: 1 },
+  { lat: 24.7136, lng: 46.6753, location: "Riyadh, Saudi Arabia", name: "Dawood", juz: 23, q: 2 },
+  { lat: 52.3676, lng: 4.9041, location: "Amsterdam, Netherlands", name: "Hassan", juz: 16, q: 4 },
+  { lat: 28.6139, lng: 77.2090, location: "Delhi, India", name: "Amina", juz: 28, q: 1 },
+  { lat: -1.2921, lng: 36.8219, location: "Nairobi, Kenya", name: "Tariq", juz: 6, q: 3 },
+  { lat: 37.7749, lng: -122.4194, location: "San Francisco, US", name: "Samira", juz: 19, q: 2 },
+  { lat: 53.4808, lng: -2.2426, location: "Manchester, UK", name: "Zayd", juz: 24, q: 4 },
+  { lat: -37.8136, lng: 144.9631, location: "Melbourne, Australia", name: "Sulayman", juz: 10, q: 1 },
+  { lat: 38.9072, lng: -77.0369, location: "Washington DC, US", name: "Rania", juz: 27, q: 3 },
 ];
 
 const DEMO_INTERVAL_MS = 900;     // how fast new markers appear
@@ -259,11 +259,10 @@ export default function GlobePage() {
           <div className="flex items-center gap-3">
             <button
               onClick={toggleDemo}
-              className={`text-xs font-medium px-4 py-2 rounded-full border transition-all duration-200 ${
-                isDemo
+              className={`text-xs font-medium px-4 py-2 rounded-full border transition-all duration-200 ${isDemo
                   ? "bg-yellow-400/15 border-yellow-400/40 text-yellow-300 hover:bg-yellow-400/25"
                   : "bg-white/8 border-white/20 text-white/60 hover:text-white/90 hover:bg-white/15"
-              }`}
+                }`}
             >
               {isDemo ? "⏹ Exit Demo" : "▶ Preview Demo"}
             </button>
@@ -438,7 +437,7 @@ export default function GlobePage() {
       {/* Branding watermark for demo screenshots */}
       {isDemo && (
         <div className="fixed bottom-5 right-5 text-white/20 text-xs tracking-widest uppercase pointer-events-none">
-          quran-khatam.com
+          qurankhatam.com
         </div>
       )}
 

@@ -4,7 +4,7 @@ export function buildWhatsAppKhatamMessage(khatamName: string, slug: string, slo
   const lines: string[] = [];
   lines.push(`*${khatamName}*`);
   lines.push(`Claim your Juz here 👇`);
-  lines.push(`quran-khatam.com/k/${slug}`);
+  lines.push(`qurankhatam.com/k/${slug}`);
   lines.push("");
 
   for (let juz = 1; juz <= 30; juz++) {
@@ -17,7 +17,7 @@ export function buildWhatsAppKhatamMessage(khatamName: string, slug: string, slo
 }
 
 export function makeDummySlots(): Slot[] {
-  const names = ["Ahmad","Fatima","Yusuf","Maryam","Ibrahim","Aisha","Omar","Zainab","Hassan","Noor","Bilal","Khadija"];
+  const names = ["Ahmad", "Fatima", "Yusuf", "Maryam", "Ibrahim", "Aisha", "Omar", "Zainab", "Hassan", "Noor", "Bilal", "Khadija"];
   const counts: Record<string, number> = {};
   return Array.from({ length: 120 }, (_, i) => {
     const juz = Math.floor(i / 4) + 1;

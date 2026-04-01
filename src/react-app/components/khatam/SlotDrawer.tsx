@@ -22,6 +22,8 @@ interface SlotDrawerProps {
   khatamName: string;
   slug: string;
   slots: Slot[];
+  defaultName?: string;
+  onNameUsed?: (name: string) => void;
 }
 
 type SuccessType = "claimed" | "completed" | null;
@@ -30,8 +32,10 @@ export default function SlotDrawer({
   slot, juz, q, open, onClose,
   onBook, onBookJuz, onComplete,
   khatamName, slug, slots,
+  defaultName = "",
+  onNameUsed,
 }: SlotDrawerProps) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(defaultName);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<SuccessType>(null);
@@ -42,14 +46,15 @@ export default function SlotDrawer({
 
   useEffect(() => {
     if (open) {
-      setName("");
+      setName(defaultName);
       setErr("");
       setSuccess(null);
       setCopied(false);
       setLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 200);
+      // Only auto-focus the input if there's no name pre-filled (otherwise button is the focus target)
+      if (!defaultName) setTimeout(() => inputRef.current?.focus(), 200);
     }
-  }, [open]);
+  }, [open, defaultName]);
 
   if (!isJuzMode && !slot) return null;
 
@@ -71,8 +76,8 @@ export default function SlotDrawer({
     const res = await onBook(juz, q, name.trim());
     setLoading(false);
     if (res?.err) { setErr(res.err); return; }
+    onNameUsed?.(name.trim());
     setSuccess("claimed");
-    toast.success(`Juz ${juz} Q${q} claimed by ${name.trim()}`);
   };
 
   const doBookJuz = async () => {
@@ -81,8 +86,8 @@ export default function SlotDrawer({
     const res = await onBookJuz(juz, name.trim());
     setLoading(false);
     if (res?.err) { setErr(res.err); return; }
+    onNameUsed?.(name.trim());
     setSuccess("claimed");
-    toast.success(`Juz ${juz} (all 4 quarters) claimed by ${name.trim()}`);
   };
 
   const doComplete = async () => {
@@ -91,8 +96,8 @@ export default function SlotDrawer({
     const res = await onComplete(juz, q, name.trim());
     setLoading(false);
     if (res?.err) { setErr(res.err); return; }
+    onNameUsed?.(name.trim());
     setSuccess("completed");
-    toast.success(`Barakallahu feek! Juz ${juz} Q${q} completed`);
   };
 
   const handleClose = () => {

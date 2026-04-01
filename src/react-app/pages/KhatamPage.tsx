@@ -17,6 +17,30 @@ export default function KhatamPage() {
   const [juzModal, setJuzModal] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"juz" | "quarters">("juz");
 
+  // Persistent claimer name — remembered across sessions
+  const [savedName, setSavedName] = useState<string>(() => localStorage.getItem("qk_claimer") ?? "");
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const persistName = (n: string) => {
+    setSavedName(n);
+    if (n) localStorage.setItem("qk_claimer", n);
+    else localStorage.removeItem("qk_claimer");
+  };
+
+  // Quick-claim from Juz grid (bypasses drawer when name is known)
+  const [quickClaimLoading, setQuickClaimLoading] = useState<number | null>(null);
+  const [shareAfterClaim, setShareAfterClaim] = useState<{ juz: number } | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleQuickClaim = async (juz: number) => {
+    if (!savedName) { setJuzModal(juz); return; }
+    setQuickClaimLoading(juz);
+    const res = await onBookJuz(juz, savedName);
+    setQuickClaimLoading(null);
+    if (res?.err) { toast.error(res.err); return; }
+    setShareAfterClaim({ juz });
+  };
+
   const state = useKhatamState(slug ?? "");
   const {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
@@ -220,74 +244,138 @@ export default function KhatamPage() {
 
         {/* Juz Grid View */}
         {(viewMode === "juz" && !isSolo && !adminMode) && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => {
-              const juzSlots = slots.filter(s => s.juz === juz);
-              const doneCount = juzSlots.filter(s => s.status === "dn").length;
-              const claimedCount = juzSlots.filter(s => s.status === "cl").length;
-              const allDone = doneCount === 4;
-              const allAvailable = juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
-              const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
-              const hasClaimed = claimedCount > 0 || (doneCount > 0 && !allDone);
-
-              return (
-                <div
-                  key={juz}
-                  onClick={() => allAvailable && setJuzModal(juz)}
-                  className={`rounded-2xl p-4 border transition-all duration-200 select-none ${
-                    allAvailable
-                      ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0"
-                      : ""
-                  }`}
-                  style={{
-                    background: allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
-                    borderColor: allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
+          <>
+            {/* "Claiming as" identity bar */}
+            <div className="mb-4 flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+              {editingName ? (
+                <form
+                  className="flex items-center gap-2 flex-1"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const n = nameInput.trim();
+                    if (n) persistName(n);
+                    setEditingName(false);
                   }}
                 >
-                  <div
-                    className="text-2xl font-bold leading-none"
-                    style={{ fontFamily: "'Playfair Display', serif", color: allDone ? "#2E7D32" : "#8B0000" }}
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    placeholder="Enter your name"
+                    maxLength={60}
+                    className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-[#8B0000] transition-colors"
+                  />
+                  <button type="submit" className="text-sm font-semibold text-[#8B0000] px-3 py-1.5 rounded-lg bg-[#FFF5F5] hover:bg-[#8B0000] hover:text-white transition-colors">
+                    Save
+                  </button>
+                  <button type="button" onClick={() => setEditingName(false)} className="text-sm text-gray-400 hover:text-gray-600">
+                    Cancel
+                  </button>
+                </form>
+              ) : savedName ? (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-[#FFF5F5] border border-[#8B0000]/20 flex items-center justify-center shrink-0">
+                    <span className="text-[#8B0000] text-sm font-bold">{savedName[0].toUpperCase()}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400 leading-none mb-0.5">Claiming as</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{savedName}</p>
+                  </div>
+                  <button
+                    onClick={() => { setNameInput(savedName); setEditingName(true); }}
+                    className="text-xs text-gray-400 hover:text-[#8B0000] transition-colors shrink-0 font-medium"
                   >
-                    {juz}
+                    Change
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-gray-400 text-lg">
+                    👤
                   </div>
-                  <div
-                    className="text-[11px] text-gray-400 italic truncate mt-0.5"
-                    style={{ fontFamily: "'Amiri', serif" }}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-500">Who's claiming?</p>
+                    <p className="text-xs text-gray-400">Set your name to claim Juz in one tap</p>
+                  </div>
+                  <button
+                    onClick={() => { setNameInput(""); setEditingName(true); }}
+                    className="text-xs font-semibold text-[#8B0000] bg-[#FFF5F5] border border-[#8B0000]/20 px-3 py-1.5 rounded-full hover:bg-[#8B0000] hover:text-white transition-colors shrink-0"
                   >
-                    {JUZ_NAMES[juz - 1]}
-                  </div>
+                    Set name
+                  </button>
+                </>
+              )}
+            </div>
 
-                  <div className="flex gap-0.5 mt-2.5">
-                    {juzSlots.map((s, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 h-1.5 rounded-full"
-                        style={{
-                          background: s.status === "dn" ? COLORS.dn.accent : s.status === "cl" ? COLORS.cl.accent : "#E0E0E0",
-                        }}
-                      />
-                    ))}
-                  </div>
+            {/* Juz cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => {
+                const juzSlots = slots.filter(s => s.juz === juz);
+                const doneCount = juzSlots.filter(s => s.status === "dn").length;
+                const claimedCount = juzSlots.filter(s => s.status === "cl").length;
+                const allDone = doneCount === 4;
+                const allAvailable = juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
+                const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
+                const hasClaimed = claimedCount > 0 || (doneCount > 0 && !allDone);
+                const isLoading = quickClaimLoading === juz;
 
-                  {names.length > 0 && (
-                    <p className="text-[11px] text-gray-600 mt-2 font-medium truncate leading-tight">
-                      {names.join(", ")}
-                    </p>
-                  )}
-
-                  {allDone && (
-                    <p className="text-[11px] text-green-700 mt-2 font-semibold">✓ Complete</p>
-                  )}
-
-                  {allAvailable && (
-                    <div className="mt-2.5 text-[11px] font-semibold text-[#8B0000] opacity-70">
-                      Tap to claim →
+                return (
+                  <div
+                    key={juz}
+                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${
+                      allAvailable && !isLoading ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
+                    }`}
+                    style={{
+                      background: isLoading ? "#FFF5F5" : allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
+                      borderColor: isLoading ? "#8B0000" : allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
+                    }}
+                    onClick={() => allAvailable && !isLoading && handleQuickClaim(juz)}
+                  >
+                    <div
+                      className="text-2xl font-bold leading-none"
+                      style={{ fontFamily: "'Playfair Display', serif", color: allDone ? "#2E7D32" : "#8B0000" }}
+                    >
+                      {isLoading ? (
+                        <span className="inline-block w-5 h-5 border-2 border-[#8B0000] border-t-transparent rounded-full animate-spin align-middle" />
+                      ) : juz}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    <div
+                      className="text-[11px] text-gray-400 italic truncate mt-0.5"
+                      style={{ fontFamily: "'Amiri', serif" }}
+                    >
+                      {JUZ_NAMES[juz - 1]}
+                    </div>
+
+                    <div className="flex gap-0.5 mt-2.5">
+                      {juzSlots.map((s, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 h-1.5 rounded-full"
+                          style={{
+                            background: s.status === "dn" ? COLORS.dn.accent : s.status === "cl" ? COLORS.cl.accent : "#E0E0E0",
+                          }}
+                        />
+                      ))}
+                    </div>
+
+                    {names.length > 0 && (
+                      <p className="text-[11px] text-gray-600 mt-2 font-medium truncate leading-tight">
+                        {names.join(", ")}
+                      </p>
+                    )}
+
+                    {allDone && <p className="text-[11px] text-green-700 mt-2 font-semibold">✓ Complete</p>}
+
+                    {allAvailable && !isLoading && (
+                      <div className="mt-2.5 text-[11px] font-semibold text-[#8B0000] opacity-60">
+                        {savedName ? `Tap to claim` : "Tap to claim →"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Quarters Accordion View */}
@@ -488,10 +576,12 @@ export default function KhatamPage() {
           khatamName={khatamName || "Khatam"}
           slug={slug ?? ""}
           slots={slots}
+          defaultName={savedName}
+          onNameUsed={persistName}
         />
       )}
 
-      {/* Entire-Juz claim drawer (community only) */}
+      {/* Entire-Juz claim drawer (community only) — fallback when no name saved */}
       {!isSolo && (
         <SlotDrawer
           slot={null}
@@ -505,8 +595,52 @@ export default function KhatamPage() {
           khatamName={khatamName || "Khatam"}
           slug={slug ?? ""}
           slots={slots}
+          defaultName={savedName}
+          onNameUsed={n => { persistName(n); setJuzModal(null); setShareAfterClaim({ juz: juzModal! }); }}
         />
       )}
+
+      {/* Floating share bar after quick-claim */}
+      {shareAfterClaim && (() => {
+        const shareMsg = buildWhatsAppKhatamMessage(khatamName || "Khatam", slug ?? "", slots);
+        const shareUrl = `https://wa.me/?text=${encodeURIComponent(shareMsg)}`;
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t border-gray-200 shadow-2xl animate-slideUp">
+            <div className="max-w-lg mx-auto">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                  <span className="text-green-600 text-sm">✓</span>
+                </div>
+                <p className="text-sm font-semibold text-gray-800">
+                  Juz {shareAfterClaim.juz} claimed as <span className="text-[#8B0000]">{savedName}</span>
+                </p>
+                <button onClick={() => setShareAfterClaim(null)} className="ml-auto text-gray-300 hover:text-gray-500 text-lg leading-none">×</button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareMsg).then(() => {
+                      setShareCopied(true);
+                      setTimeout(() => setShareCopied(false), 2000);
+                    });
+                  }}
+                  className={`flex-1 h-10 rounded-full text-sm font-semibold transition-colors ${shareCopied ? "bg-green-600 text-white" : "bg-[#8B0000] hover:bg-[#6B0000] text-white"}`}
+                >
+                  {shareCopied ? "Copied!" : "Copy WhatsApp Message"}
+                </button>
+                <a
+                  href={shareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 h-10 rounded-full text-sm font-semibold bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center justify-center transition-colors"
+                >
+                  Open in WhatsApp
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* WhatsApp share drawer (community only) */}
       {!isSolo && (
