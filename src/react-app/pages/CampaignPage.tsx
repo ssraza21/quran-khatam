@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { CampaignPublic } from "@/lib/types";
+import CreateKhatamDrawer from "@/components/khatam/CreateKhatamDrawer";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -18,6 +19,7 @@ export default function CampaignPage() {
   const [campaign, setCampaign] = useState<CampaignPublic | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -64,7 +66,7 @@ export default function CampaignPage() {
             {campaign.description}
           </p>
           <button
-            onClick={() => navigate(`/?campaign=${campaign.slug}#create-khatam`)}
+            onClick={() => setDrawerOpen(true)}
             className="bg-green-500 hover:bg-green-400 text-white px-6 py-3 rounded-full text-sm font-semibold transition-colors"
           >
             Start a Khatam for This Campaign
@@ -119,7 +121,7 @@ export default function CampaignPage() {
               Khatams in this Campaign
             </h2>
             <button
-              onClick={() => navigate(`/?campaign=${campaign.slug}#create-khatam`)}
+              onClick={() => setDrawerOpen(true)}
               className="bg-[#8B0000] text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-[#6B0000] transition-colors"
             >
               + Add Yours
@@ -130,7 +132,7 @@ export default function CampaignPage() {
             <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
               <p className="text-gray-400 mb-4">No khatams yet. Be the first to join this campaign.</p>
               <button
-                onClick={() => navigate(`/?campaign=${campaign.slug}#create-khatam`)}
+                onClick={() => setDrawerOpen(true)}
                 className="bg-[#8B0000] text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-[#6B0000] transition-colors"
               >
                 Start a Khatam
@@ -189,13 +191,20 @@ export default function CampaignPage() {
             Create your own khatam and add it to this campaign. Every Quran completed is a prayer answered.
           </p>
           <button
-            onClick={() => navigate(`/?campaign=${campaign.slug}#create-khatam`)}
+            onClick={() => setDrawerOpen(true)}
             className="bg-green-500 hover:bg-green-400 text-white px-8 py-3 rounded-full text-sm font-semibold transition-colors"
           >
             Start a Khatam
           </button>
         </div>
       </section>
+
+      <CreateKhatamDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        campaignSlug={campaign.slug}
+        campaignName={campaign.name}
+      />
     </>
   );
 }

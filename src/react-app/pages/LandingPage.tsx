@@ -5,6 +5,7 @@ import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
 import { COUNTRIES } from "@/lib/countries";
 import type { CampaignPublic } from "@/lib/types";
+import CreateKhatamDrawer from "@/components/khatam/CreateKhatamDrawer";
 
 const FEATURED_CAMPAIGN_SLUG = "masjid-al-aqsa";
 
@@ -28,6 +29,7 @@ export default function LandingPage() {
 
   // Featured campaign
   const [featuredCampaign, setFeaturedCampaign] = useState<CampaignPublic | null>(null);
+  const [campaignDrawerOpen, setCampaignDrawerOpen] = useState(false);
   useEffect(() => {
     api.getCampaign(FEATURED_CAMPAIGN_SLUG).then(setFeaturedCampaign).catch(() => {});
   }, []);
@@ -238,12 +240,12 @@ export default function LandingPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3">
-                  <Link
-                    to={`/?campaign=${featuredCampaign.slug}#create-khatam`}
-                    className="inline-block bg-green-500 hover:bg-green-400 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+                  <button
+                    onClick={() => setCampaignDrawerOpen(true)}
+                    className="bg-green-500 hover:bg-green-400 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
                   >
                     Start a Khatam for This Campaign
-                  </Link>
+                  </button>
                   <Link
                     to={`/campaigns/${featuredCampaign.slug}`}
                     className="inline-block border border-green-400/40 text-green-200 hover:bg-white/10 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
@@ -540,6 +542,15 @@ export default function LandingPage() {
           </p>
         </div>
       </section>
+
+      {featuredCampaign && (
+        <CreateKhatamDrawer
+          open={campaignDrawerOpen}
+          onOpenChange={setCampaignDrawerOpen}
+          campaignSlug={featuredCampaign.slug}
+          campaignName={featuredCampaign.name}
+        />
+      )}
     </>
   );
 }
