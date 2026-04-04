@@ -33,6 +33,25 @@ export interface KhatamPublic {
   show_names_on_globe?: boolean;
 }
 
+export interface CampaignStats {
+  total_khatams: number;
+  completed_khatams: number;
+  slots_done: number;
+  total_slots: number;
+  pct: number;
+}
+
+export interface CampaignPublic {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  is_featured: boolean;
+  created_at: string;
+  khatams: KhatamPublic[];
+  stats: CampaignStats;
+}
+
 export interface GlobeMarker {
   lat: number;
   lng: number;

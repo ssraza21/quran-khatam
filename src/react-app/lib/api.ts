@@ -1,4 +1,4 @@
-import type { GlobeData } from "@/lib/types";
+import type { GlobeData, CampaignPublic } from "@/lib/types";
 
 const BASE = "/api";
 
@@ -44,6 +44,7 @@ export const api = {
     location_lat?: number,
     location_lng?: number,
     show_names_on_globe?: boolean,
+    campaign_slug?: string,
   ) {
     return request<KhatamCreateResult>("/khatams", {
       method: "POST",
@@ -57,6 +58,7 @@ export const api = {
         location_lat,
         location_lng,
         show_names_on_globe,
+        campaign_slug: campaign_slug || undefined,
       }),
     });
   },
@@ -169,5 +171,16 @@ export const api = {
 
   getGlobeData() {
     return request<GlobeData>("/globe");
+  },
+
+  getCampaign(slug: string) {
+    return request<CampaignPublic>(`/campaigns/${slug}`);
+  },
+
+  createCampaign(name: string, slug: string, description?: string) {
+    return request<{ id: number; slug: string; name: string }>("/campaigns", {
+      method: "POST",
+      body: JSON.stringify({ name, slug, description }),
+    });
   },
 };
