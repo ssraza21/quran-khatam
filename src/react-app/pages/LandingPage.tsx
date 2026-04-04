@@ -211,13 +211,31 @@ export default function LandingPage() {
                 <p className="text-green-100/80 text-sm leading-relaxed mb-5 max-w-[520px]">
                   {featuredCampaign.description}
                 </p>
+                {featuredCampaign.goal > 0 && (
+                  <div className="mb-5">
+                    <div className="flex items-end justify-between mb-1.5">
+                      <div>
+                        <span className="text-2xl font-bold text-white">{featuredCampaign.stats.total_khatams.toLocaleString()}</span>
+                        <span className="text-sm text-green-300 ml-1">/ {featuredCampaign.goal.toLocaleString()} khatams</span>
+                      </div>
+                      <span className="text-xs text-green-300 font-medium">
+                        {Math.round((featuredCampaign.stats.total_khatams / featuredCampaign.goal) * 100)}% of goal
+                      </span>
+                    </div>
+                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-green-400 rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min((featuredCampaign.stats.total_khatams / featuredCampaign.goal) * 100, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-green-300/60 mt-1">
+                      {(featuredCampaign.goal - featuredCampaign.stats.total_khatams).toLocaleString()} more khatams to reach the goal
+                    </p>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-4 mb-6">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-white">{featuredCampaign.stats.total_khatams}</div>
-                    <div className="text-xs text-green-300 uppercase tracking-wider">Khatams</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">{featuredCampaign.stats.completed_khatams}</div>
+                    <div className="text-2xl font-bold text-white">{featuredCampaign.stats.completed_khatams.toLocaleString()}</div>
                     <div className="text-xs text-green-300 uppercase tracking-wider">Completed</div>
                   </div>
                   <div className="text-center">
@@ -225,20 +243,6 @@ export default function LandingPage() {
                     <div className="text-xs text-green-300 uppercase tracking-wider">Portions Done</div>
                   </div>
                 </div>
-                {featuredCampaign.stats.total_slots > 0 && (
-                  <div className="mb-6">
-                    <div className="flex justify-between text-xs text-green-300 mb-1">
-                      <span>Total progress across all khatams</span>
-                      <span>{featuredCampaign.stats.pct}%</span>
-                    </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-green-400 rounded-full transition-all duration-700"
-                        style={{ width: `${featuredCampaign.stats.pct}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
                 <div className="flex flex-wrap gap-3">
                   <button
                     onClick={() => setCampaignDrawerOpen(true)}

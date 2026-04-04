@@ -7,6 +7,7 @@ CREATE TABLE khatam_public.campaigns (
   slug        TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  goal        INT NOT NULL DEFAULT 0,
   is_featured BOOLEAN NOT NULL DEFAULT FALSE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -37,10 +38,11 @@ GRANT USAGE ON SEQUENCE khatam_public.campaigns_id_seq TO service_role;
 ALTER PUBLICATION supabase_realtime ADD TABLE khatam_public.campaigns;
 
 -- 5. Seed: Masjid Al-Aqsa featured campaign
-INSERT INTO khatam_public.campaigns (slug, name, description, is_featured)
+INSERT INTO khatam_public.campaigns (slug, name, description, goal, is_featured)
 VALUES (
   'masjid-al-aqsa',
   'Quran for Masjid Al-Aqsa',
   'Join Muslims around the world in completing the Quran in solidarity for the liberation and protection of Masjid Al-Aqsa — the third holiest site in Islam. Every portion recited is a prayer for its people.',
+  5000,
   TRUE
 );

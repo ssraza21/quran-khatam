@@ -77,39 +77,44 @@ export default function CampaignPage() {
       {/* Stats Bar */}
       <section className="bg-white border-b border-gray-100 px-5 py-8">
         <div className="max-w-[900px] mx-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mb-6">
+          {/* Goal progress */}
+          {campaign.goal > 0 && (
+            <div className="mb-8 p-5 bg-[#FAFAFA] rounded-2xl border border-gray-100">
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <span className="text-3xl font-bold text-[#2C2C2C]">{stats.total_khatams.toLocaleString()}</span>
+                  <span className="text-lg text-gray-400 ml-1">/ {campaign.goal.toLocaleString()} khatams</span>
+                </div>
+                <span className="text-sm font-semibold text-[#8B0000]">
+                  {Math.round((stats.total_khatams / campaign.goal) * 100)}% of goal
+                </span>
+              </div>
+              <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#8B0000] rounded-full transition-all duration-700"
+                  style={{ width: `${Math.min((stats.total_khatams / campaign.goal) * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                {(campaign.goal - stats.total_khatams).toLocaleString()} more khatams needed to reach the goal
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 mb-6">
             <div className="text-center">
-              <div className="text-3xl font-bold text-[#2C2C2C]">{stats.total_khatams}</div>
+              <div className="text-3xl font-bold text-[#2C2C2C]">{stats.total_khatams.toLocaleString()}</div>
               <div className="text-xs text-gray-400 uppercase tracking-wider mt-1">Khatams Started</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-[#2E7D32]">{stats.completed_khatams}</div>
+              <div className="text-3xl font-bold text-[#2E7D32]">{stats.completed_khatams.toLocaleString()}</div>
               <div className="text-xs text-gray-400 uppercase tracking-wider mt-1">Completed</div>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-[#2C2C2C]">{stats.slots_done.toLocaleString()}</div>
               <div className="text-xs text-gray-400 uppercase tracking-wider mt-1">Portions Done</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-[#8B0000]">{stats.pct}%</div>
-              <div className="text-xs text-gray-400 uppercase tracking-wider mt-1">Overall Progress</div>
-            </div>
           </div>
-
-          {stats.total_slots > 0 && (
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                <span>{stats.slots_done.toLocaleString()} of {stats.total_slots.toLocaleString()} total portions complete</span>
-                <span>{stats.pct}%</span>
-              </div>
-              <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#2E7D32] rounded-full transition-all duration-700"
-                  style={{ width: `${stats.pct}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </section>
 

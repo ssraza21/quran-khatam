@@ -46,6 +46,7 @@ export interface CampaignPublic {
   slug: string;
   name: string;
   description: string;
+  goal: number;
   is_featured: boolean;
   created_at: string;
   khatams: KhatamPublic[];
