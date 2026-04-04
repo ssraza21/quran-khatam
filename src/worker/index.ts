@@ -50,6 +50,78 @@ async function verifyAdmin(db: ReturnType<typeof createServiceClient>, slug: str
   return { valid, khatam: valid ? khatam : null };
 }
 
+// POST /api/campaigns — Create a new campaign
+app.post("/api/campaigns", async (c) => {
+  const db = createServiceClient(c.env);
+  const body = await c.req.json<{ name: string; slug: string; description?: string }>();
+  const { name, description } = body;
+  let { slug } = body;
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  slug = (slug ?? "").trim().toLowerCase();
+  if (!isValidSlug(slug)) return c.json({ error: "Invalid slug. Use 3-60 lowercase letters, numbers, and hyphens." }, 400);
+
+  const { data: existing } = await db.from("campaigns").select("id").eq("slug", slug).limit(1);
+  if (existing && existing.length > 0) return c.json({ error: "Campaign slug already taken" }, 409);
+
+  const { data, error } = await db
+    .from("campaigns")
+    .insert({ slug, name: name.trim(), description: description?.trim() || "" })
+    .select("id, slug, name, description, is_featured, created_at")
+    .single();
+
+  if (error || !data) return c.json({ error: "Failed to create campaign" }, 500);
+  return c.json(data, 201);
+});
+
+// GET /api/campaigns/:slug — Get campaign with member khatams and aggregate stats
+app.get("/api/campaigns/:slug", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+
+  const { data: campaign } = await db
+    .from("campaigns")
+    .select("id, slug, name, description, is_featured, created_at")
+    .eq("slug", slug)
+    .single();
+
+  if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+
+  const { data: khatams } = await db
+    .from("khatams")
+    .select("id, slug, name, khatam_num, created_at, completed_at, is_solo, location_city, location_country")
+    .eq("campaign_id", campaign.id)
+    .order("created_at", { ascending: false });
+
+  const khatamList = khatams ?? [];
+  const khatamIds = khatamList.map((k) => k.id);
+
+  let slotsDone = 0;
+  if (khatamIds.length > 0) {
+    const { count } = await db
+      .from("slots")
+      .select("*", { count: "exact", head: true })
+      .in("khatam_id", khatamIds)
+      .eq("status", "dn");
+    slotsDone = count ?? 0;
+  }
+
+  const totalSlots = khatamIds.length * 120;
+  const completedKhatams = khatamList.filter((k) => k.completed_at !== null).length;
+
+  return c.json({
+    ...campaign,
+    khatams: khatamList,
+    stats: {
+      total_khatams: khatamList.length,
+      completed_khatams: completedKhatams,
+      slots_done: slotsDone,
+      total_slots: totalSlots,
+      pct: totalSlots > 0 ? Math.round((slotsDone / totalSlots) * 100) : 0,
+    },
+  });
+});
+
 // GET /api/globe — Aggregated globe data (all khatams with location)
 app.get("/api/globe", async (c) => {
   const db = createServiceClient(c.env);
@@ -134,8 +206,9 @@ app.post("/api/khatams", async (c) => {
     location_lat?: number;
     location_lng?: number;
     show_names_on_globe?: boolean;
+    campaign_slug?: string;
   }>();
-  const { name, is_solo = false, location_city, location_country, location_lat, location_lng, show_names_on_globe } = body;
+  const { name, is_solo = false, location_city, location_country, location_lat, location_lng, show_names_on_globe, campaign_slug } = body;
   let { slug } = body;
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
@@ -180,9 +253,20 @@ app.post("/api/khatams", async (c) => {
       }
     : {};
 
+  // Resolve campaign if provided
+  let campaignId: number | null = null;
+  if (campaign_slug && !is_solo) {
+    const { data: camp } = await db
+      .from("campaigns")
+      .select("id")
+      .eq("slug", campaign_slug.trim())
+      .single();
+    campaignId = camp?.id ?? null;
+  }
+
   const { data: khatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo, ...locationFields })
+    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo, ...locationFields, ...(campaignId ? { campaign_id: campaignId } : {}) })
     .select("id, slug, name, khatam_num, created_at, is_solo")
     .single();
 
