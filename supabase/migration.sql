@@ -73,3 +73,30 @@ ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS location_lng REAL;
 ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS show_names_on_globe BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_khatams_location ON khatam_public.khatams(location_lat, location_lng) WHERE location_lat IS NOT NULL;
+
+-- Migration: Admin-configurable claim limit per khatam (default 8)
+ALTER TABLE khatam_public.khatams ADD COLUMN IF NOT EXISTS claim_limit INT NOT NULL DEFAULT 8;
+
+-- Migration: Per-slug participant name list for admin assignment
+CREATE TABLE IF NOT EXISTS khatam_public.khatam_participants (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  slug       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(slug, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_participants_slug ON khatam_public.khatam_participants(slug);
+
+ALTER TABLE khatam_public.khatam_participants ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anon_select_participants" ON khatam_public.khatam_participants
+  FOR SELECT TO anon USING (true);
+
+CREATE POLICY "service_all_participants" ON khatam_public.khatam_participants
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+GRANT ALL ON TABLE khatam_public.khatam_participants TO service_role;
+GRANT SELECT ON TABLE khatam_public.khatam_participants TO anon, authenticated;
+GRANT ALL ON SEQUENCE khatam_public.khatam_participants_id_seq TO service_role;
+GRANT USAGE ON SEQUENCE khatam_public.khatam_participants_id_seq TO anon, authenticated;

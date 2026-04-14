@@ -26,6 +26,7 @@ export interface KhatamPublic {
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
+  claim_limit?: number;
   location_city?: string | null;
   location_country?: string | null;
   location_lat?: number | null;

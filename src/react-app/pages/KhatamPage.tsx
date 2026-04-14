@@ -5,10 +5,14 @@ import { COLORS, JUZ_NAMES, Q_SHORT } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
+import AdminSlotDrawer from "@/components/khatam/AdminSlotDrawer";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { buildWhatsAppKhatamMessage } from "@/lib/helpers";
 import { toast } from "sonner";
+import {
+  Users, UserPlus, X, BookOpen, Lock, RotateCcw, Trash2, Sliders,
+} from "lucide-react";
 
 export default function KhatamPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -41,22 +45,28 @@ export default function KhatamPage() {
     setShareAfterClaim({ juz });
   };
 
+  const [participantInput, setParticipantInput] = useState("");
+
   const state = useKhatamState(slug ?? "");
   const {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
-    isSolo,
+    isSolo, claimLimit,
     showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
+    adminDrawer, setAdminDrawer,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
+    participants, claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
-    tryAdmin, adminSetStatus, deactivateAdmin,
+    tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
+    adminSaveClaimLimit,
+    adminAddParticipant, adminRemoveParticipant,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -387,9 +397,10 @@ export default function KhatamPage() {
               {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
                 <JuzRow key={juz} juz={juz} slots={slots}
                   adminMode={adminMode} adminSelected={adminSelected}
-                  onSelect={(j, q) => setAdminSelected({ juz: j, q })}
+                  onSelect={(j, q) => { setAdminSelected({ juz: j, q }); setAdminDrawer({ juz: j, q }); }}
                   onOpenModal={(j, q) => setModal({ juz: j, q })}
                   onClaimJuz={juzNum => setJuzModal(juzNum)}
+                  onAdminClaimJuz={juzNum => setAdminDrawer({ juz: juzNum, q: 0 })}
                   isSolo={isSolo} onSoloToggle={onSoloToggle} />
               ))}
             </div>
@@ -458,13 +469,13 @@ export default function KhatamPage() {
 
       {/* Admin CTA Section (community only) */}
       {!isSolo && (
-        <section className="text-white text-center px-5 py-12"
+        <section className="text-white px-5 py-12"
           style={{ background: "linear-gradient(135deg, #5A0000, #3A0000)" }}>
           <div className="max-w-[600px] mx-auto">
-            <h2 className="text-2xl font-semibold text-white mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h2 className="text-2xl font-semibold text-white mb-1 text-center" style={{ fontFamily: "'Playfair Display', serif" }}>
               Organizer Admin
             </h2>
-            <p className="opacity-60 mb-6 text-sm">Manage the Khatam, override statuses, and start new completions.</p>
+            <p className="opacity-60 mb-6 text-sm text-center">Manage the Khatam, assign quarters, and start new completions.</p>
 
             {!adminMode ? (
               <div className="flex gap-3 justify-center max-w-[400px] mx-auto">
@@ -480,85 +491,180 @@ export default function KhatamPage() {
                 </button>
               </div>
             ) : (
-              <div className="animate-fadeIn">
-                <p className="text-green-300 mb-4 font-medium text-sm">
-                  Admin active — tap any quarter above to select it
+              <div className="animate-fadeIn space-y-5">
+                <p className="text-green-300 text-center font-medium text-sm">
+                  Admin active — tap any quarter or Juz to assign it
                 </p>
-                {adminSelected && (
-                  <p className="text-white/60 text-sm mb-3">
-                    Selected: Juz {adminSelected.juz} {Q_SHORT[adminSelected.q - 1]} ({getSlot(adminSelected.juz, adminSelected.q)?.by || "unclaimed"})
-                  </p>
-                )}
-                <div className="flex gap-2 justify-center flex-wrap mb-3">
-                  {(["av", "cl", "dn"] as StatusKey[]).map(st => (
-                    <button key={st} onClick={() => adminSetStatus(st)}
-                      className="bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm cursor-pointer hover:bg-white/20 transition-colors font-medium">
-                      Set {COLORS[st].label}
+
+                {/* ── Participants ───────────────────────────────── */}
+                <div className="bg-white/8 border border-white/15 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users size={14} className="text-white/60" />
+                    <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Participants</span>
+                  </div>
+
+                  {/* Participant chips */}
+                  {participants.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {participants.map(p => (
+                        <span key={p} className="flex items-center gap-1 bg-white/10 border border-white/20 text-white text-xs px-2.5 py-1 rounded-full">
+                          {p}
+                          <button
+                            onClick={() => adminRemoveParticipant(p)}
+                            className="text-white/40 hover:text-white/80 transition-colors ml-0.5"
+                          >
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {participants.length === 0 && (
+                    <p className="text-xs text-white/40 italic">No participants added yet</p>
+                  )}
+
+                  {/* Add participant */}
+                  <form
+                    onSubmit={async e => {
+                      e.preventDefault();
+                      const n = participantInput.trim();
+                      if (!n) return;
+                      await adminAddParticipant(n);
+                      setParticipantInput("");
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      value={participantInput}
+                      onChange={e => setParticipantInput(e.target.value)}
+                      placeholder="Add participant name"
+                      maxLength={60}
+                      className="flex-1 bg-white/10 border border-white/25 text-white px-3 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-white/15 border border-white/30 text-white px-3 py-2 rounded-full text-sm cursor-pointer hover:bg-white/25 transition-colors flex items-center gap-1.5 font-medium whitespace-nowrap"
+                    >
+                      <UserPlus size={13} />
+                      Add
                     </button>
-                  ))}
+                  </form>
                 </div>
-                <div className="flex flex-col gap-3 items-center">
-                  <div className="flex gap-2 justify-center flex-wrap items-center max-w-[400px] w-full">
+
+                {/* ── Khatam Management ──────────────────────────── */}
+                <div className="bg-white/8 border border-white/15 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BookOpen size={14} className="text-white/60" />
+                    <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Khatam</span>
+                  </div>
+
+                  {/* New khatam */}
+                  <div className="flex gap-2 items-center">
                     <input
                       type="text"
                       value={newKhatamName}
                       onChange={e => setNewKhatamName(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && startNewKhatam()}
-                      placeholder="Khatam name (optional)"
+                      placeholder="Name (optional)"
                       maxLength={60}
-                      className="flex-1 min-w-[160px] bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
+                      className="flex-1 bg-white/10 border border-white/25 text-white px-3 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
                     />
                     <button
                       onClick={startNewKhatam}
-                      className="bg-white text-[#8B0000] border-none px-5 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
+                      className="bg-white text-[#8B0000] border-none px-4 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap flex items-center gap-1.5"
                     >
-                      + New Khatam
+                      <BookOpen size={13} />
+                      New Khatam
                     </button>
                   </div>
-                  <button
-                    onClick={deactivateAdmin}
-                    className="bg-transparent border border-white/30 text-white/80 px-5 py-2 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors"
-                  >
-                    Deactivate
-                  </button>
-                  <div className="flex gap-2 justify-center flex-wrap mt-1">
-                    {adminSelected && (
+
+                  {/* Claim limit */}
+                  <div className="flex gap-2 items-center">
+                    <Sliders size={13} className="text-white/50 shrink-0" />
+                    <span className="text-xs text-white/60 shrink-0">Claim limit</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={claimLimitInput}
+                      onChange={e => setClaimLimitInput(Number(e.target.value))}
+                      className="w-16 bg-white/10 border border-white/25 text-white px-2.5 py-1.5 rounded-lg text-sm outline-none text-center focus:border-white/50 transition-colors"
+                    />
+                    <span className="text-xs text-white/40 shrink-0">quarters per person</span>
+                    {claimLimitInput !== claimLimit && (
                       <button
-                        onClick={adminResetJuzToAvailable}
-                        className="bg-white/10 border border-white/30 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors font-medium"
+                        onClick={adminSaveClaimLimit}
+                        className="ml-auto bg-white/15 border border-white/30 text-white text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-white/25 transition-colors font-medium"
                       >
-                        Reset Juz {adminSelected.juz} to Available
+                        Save
                       </button>
                     )}
+                  </div>
+
+                  {locationCountry && (
+                    <button
+                      onClick={adminToggleGlobeNames}
+                      className="w-full bg-white/10 border border-white/25 text-white/80 px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors text-left flex items-center gap-2"
+                    >
+                      🌍 {showNamesOnGlobe ? "Hide names on World Globe" : "Show names on World Globe"}
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Controls ───────────────────────────────────── */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={deactivateAdmin}
+                    className="bg-transparent border border-white/30 text-white/80 px-6 py-2.5 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors flex items-center gap-2"
+                  >
+                    <Lock size={13} />
+                    Deactivate Admin
+                  </button>
+                </div>
+
+                {/* ── Danger Zone ────────────────────────────────── */}
+                <div className="bg-red-950/40 border border-red-400/20 rounded-2xl p-4 space-y-2">
+                  <span className="text-xs font-semibold text-red-300/60 uppercase tracking-wider">Danger zone</span>
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={adminResetAllToAvailable}
-                      className="bg-red-600/80 border border-red-300/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-red-600 transition-colors font-semibold"
+                      className="flex-1 min-w-[140px] bg-red-600/60 border border-red-300/40 text-white px-4 py-2.5 rounded-xl text-xs cursor-pointer hover:bg-red-600/80 transition-colors font-semibold flex items-center justify-center gap-1.5"
                     >
-                      Reset Entire Khatam to Available
+                      <RotateCcw size={12} />
+                      Reset All Slots
                     </button>
                     <button
                       onClick={adminDeleteKhatam}
-                      className="bg-black/60 border border-red-400/60 text-white px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-black/80 transition-colors font-semibold"
+                      className="flex-1 min-w-[140px] bg-black/50 border border-red-400/40 text-white px-4 py-2.5 rounded-xl text-xs cursor-pointer hover:bg-black/70 transition-colors font-semibold flex items-center justify-center gap-1.5"
                     >
-                      Delete This Khatam
+                      <Trash2 size={12} />
+                      Delete Khatam
                     </button>
                   </div>
-                  {locationCountry && (
-                    <div className="mt-3 pt-3 border-t border-white/10">
-                      <button
-                        onClick={adminToggleGlobeNames}
-                        className="bg-white/10 border border-white/25 text-white/80 px-5 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors"
-                      >
-                        🌍 {showNamesOnGlobe ? "Hide names on World Globe" : "Show names on World Globe"}
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
-            {adminErr && <p className="text-red-300 mt-3 text-sm">{adminErr}</p>}
+            {adminErr && <p className="text-red-300 mt-3 text-sm text-center">{adminErr}</p>}
           </div>
         </section>
+      )}
+
+      {/* Admin slot/juz assignment drawer (community only) */}
+      {!isSolo && adminMode && (
+        <AdminSlotDrawer
+          open={!!adminDrawer}
+          onClose={() => { setAdminDrawer(null); setAdminSelected(null); }}
+          juz={adminDrawer?.juz ?? 1}
+          q={adminDrawer?.q ?? 0}
+          slots={slots}
+          participants={participants}
+          onAssign={async (j, q, st, name) => {
+            setAdminSelected({ juz: j, q });
+            await adminSetStatus(st, name, j, q);
+          }}
+          onAssignJuz={async (j, st, name) => adminAssignJuz(j, st, name)}
+          onResetJuz={async (j) => adminResetJuzToAvailable(j)}
+        />
       )}
 
       {/* Quarter claim drawer (community only) */}
