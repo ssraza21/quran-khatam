@@ -253,7 +253,9 @@ app.post("/api/khatams/:slug/claim", async (c) => {
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
-  // Check 8-active limit
+  const claimLimit = khatam.claim_limit ?? 8;
+
+  // Check active-claim limit
   const { count } = await db
     .from("slots")
     .select("*", { count: "exact", head: true })
@@ -261,8 +263,8 @@ app.post("/api/khatams/:slug/claim", async (c) => {
     .eq("status", "cl")
     .ilike("claimed_by", name.trim());
 
-  if ((count ?? 0) >= 8) {
-    return c.json({ error: "You've reached the limit of 8 quarters. Complete your current portions first." }, 400);
+  if ((count ?? 0) >= claimLimit) {
+    return c.json({ error: `You've reached the limit of ${claimLimit} quarters. Complete your current portions first.` }, 400);
   }
 
   const { error, data } = await db
@@ -295,7 +297,9 @@ app.post("/api/khatams/:slug/claim-juz", async (c) => {
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
-  // Check active-claim limit in parallel with the update to save a round-trip
+  const claimLimit = khatam.claim_limit ?? 8;
+
+  // Check active-claim limit
   const { count: activeCount } = await db
     .from("slots")
     .select("*", { count: "exact", head: true })
@@ -303,8 +307,8 @@ app.post("/api/khatams/:slug/claim-juz", async (c) => {
     .eq("status", "cl")
     .ilike("claimed_by", name.trim());
 
-  if ((activeCount ?? 0) + 4 > 8) {
-    return c.json({ error: "Claiming a full Juz would exceed the limit of 8 active quarters." }, 400);
+  if ((activeCount ?? 0) + 4 > claimLimit) {
+    return c.json({ error: `Claiming a full Juz would exceed the limit of ${claimLimit} active quarters.` }, 400);
   }
 
   // Claim all available quarters in one UPDATE — the affected row count tells us if any were already taken.
@@ -490,12 +494,12 @@ app.delete("/api/khatams/:slug/solo/delete", async (c) => {
 app.post("/api/khatams/:slug/admin/set-status", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin, juz, q, status } = await c.req.json<{ pin: string; juz: number; q: number; status: string }>();
+  const { pin, juz, q, status, name } = await c.req.json<{ pin: string; juz: number; q: number; status: string; name?: string }>();
 
   const { valid, khatam } = await verifyAdmin(db, slug, pin);
   if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
 
-  // Get current slot for preserving claimed_by
+  // Get current slot for preserving claimed_by when no name override provided
   const { data: currentSlot } = await db
     .from("slots")
     .select("claimed_by")
@@ -504,11 +508,14 @@ app.post("/api/khatams/:slug/admin/set-status", async (c) => {
     .eq("q", q)
     .single();
 
+  const assignedName = name?.trim() || currentSlot?.claimed_by || "Admin";
+  const now = new Date().toISOString();
+
   const updates = status === "av"
     ? { status: "av" as const, claimed_by: null, claimed_at: null, done_at: null }
     : status === "cl"
-      ? { status: "cl" as const, claimed_by: currentSlot?.claimed_by || "Admin", claimed_at: new Date().toISOString() }
-      : { status: "dn" as const, claimed_by: currentSlot?.claimed_by || "Admin", done_at: new Date().toISOString() };
+      ? { status: "cl" as const, claimed_by: assignedName, claimed_at: now }
+      : { status: "dn" as const, claimed_by: assignedName, done_at: now };
 
   const { error } = await db
     .from("slots")
@@ -520,6 +527,129 @@ app.post("/api/khatams/:slug/admin/set-status", async (c) => {
   if (error) return c.json({ error: "Failed to update status" }, 500);
 
   await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/admin/assign-juz — Assign all 4 quarters of a Juz to a name
+app.post("/api/khatams/:slug/admin/assign-juz", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, juz, status, name } = await c.req.json<{ pin: string; juz: number; status: string; name?: string }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+
+  if (!juz || juz < 1 || juz > 30) return c.json({ error: "Invalid Juz number" }, 400);
+
+  const assignedName = name?.trim() || "Admin";
+  const now = new Date().toISOString();
+
+  const updates = status === "av"
+    ? { status: "av" as const, claimed_by: null, claimed_at: null, done_at: null }
+    : status === "cl"
+      ? { status: "cl" as const, claimed_by: assignedName, claimed_at: now }
+      : { status: "dn" as const, claimed_by: assignedName, done_at: now };
+
+  const { error } = await db
+    .from("slots")
+    .update(updates)
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz);
+
+  if (error) return c.json({ error: "Failed to assign Juz" }, 500);
+
+  await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/admin/set-claim-limit — Update the per-person claim limit
+app.post("/api/khatams/:slug/admin/set-claim-limit", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, limit } = await c.req.json<{ pin: string; limit: number }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+
+  if (typeof limit !== "number" || limit < 1 || limit > 120) {
+    return c.json({ error: "Limit must be between 1 and 120" }, 400);
+  }
+
+  // Apply to all khatams in this slug so the setting feels global to the group
+  const { error } = await db
+    .from("khatams")
+    .update({ claim_limit: limit })
+    .eq("slug", slug);
+
+  if (error) return c.json({ error: "Failed to update claim limit" }, 500);
+
+  return c.json({ ok: true, claim_limit: limit });
+});
+
+// GET /api/khatams/:slug/admin/participants — List participant names for a slug
+app.get("/api/khatams/:slug/admin/participants", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const pin = c.req.query("pin") ?? "";
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+
+  const { data, error } = await db
+    .from("khatam_participants")
+    .select("name")
+    .eq("slug", slug)
+    .order("created_at", { ascending: true });
+
+  if (error) return c.json({ error: "Failed to fetch participants" }, 500);
+
+  return c.json({ participants: (data ?? []).map((r: { name: string }) => r.name) });
+});
+
+// POST /api/khatams/:slug/admin/participants — Add a participant name
+app.post("/api/khatams/:slug/admin/participants", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name } = await c.req.json<{ pin: string; name: string }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  if (name.trim().length > 60) return c.json({ error: "Name too long" }, 400);
+
+  const { error } = await db
+    .from("khatam_participants")
+    .insert({ slug, name: name.trim() });
+
+  // Unique constraint — silently ignore duplicates
+  if (error && !error.message.includes("duplicate")) {
+    return c.json({ error: "Failed to add participant" }, 500);
+  }
+
+  return c.json({ ok: true });
+});
+
+// DELETE /api/khatams/:slug/admin/participants — Remove a participant name
+app.delete("/api/khatams/:slug/admin/participants", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name } = await c.req.json<{ pin: string; name: string }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+
+  const { error } = await db
+    .from("khatam_participants")
+    .delete()
+    .eq("slug", slug)
+    .eq("name", name.trim());
+
+  if (error) return c.json({ error: "Failed to remove participant" }, 500);
 
   return c.json({ ok: true });
 });

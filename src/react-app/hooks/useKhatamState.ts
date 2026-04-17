@@ -13,6 +13,7 @@ export interface KhatamInfo {
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
+  claim_limit: number;
   show_names_on_globe: boolean;
   location_country: string | null;
   done: number;
@@ -45,9 +46,12 @@ export function useKhatamState(slug: string) {
   const [modal, setModal] = useState<{ juz: number; q: number } | null>(null);
   const [adminMode, setAdminMode] = useState(false);
   const [adminSelected, setAdminSelected] = useState<{ juz: number; q: number } | null>(null);
+  const [adminDrawer, setAdminDrawer] = useState<{ juz: number; q: number } | null>(null);
   const [adminPin, setAdminPin] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [newKhatamName, setNewKhatamName] = useState("");
+  const [participants, setParticipants] = useState<string[]>([]);
+  const [claimLimitInput, setClaimLimitInput] = useState<number>(8);
   const lastSlug = useRef(slug);
 
   // Load all khatams with their completion counts
@@ -86,6 +90,7 @@ export function useKhatamState(slug: string) {
         created_at: k.created_at,
         completed_at: k.completed_at,
         is_solo: k.is_solo ?? false,
+        claim_limit: k.claim_limit ?? 8,
         show_names_on_globe: k.show_names_on_globe ?? true,
         location_country: k.location_country ?? null,
         done: count ?? 0,
@@ -192,10 +197,12 @@ export function useKhatamState(slug: string) {
   const pct = slots.length ? Math.round((done / 120) * 100) : 0;
   const khatmComplete = slots.length > 0 && done === 120;
 
+  const claimLimit = khatams.find(k => k.id === selectedKhatamId)?.claim_limit ?? 8;
+
   const onBook = async (juz: number, q: number, name: string): Promise<{ err: string } | undefined> => {
     const slot = getSlot(juz, q);
     if (slot.status !== "av") return { err: "This quarter was just claimed. Please choose another." };
-    if (countActive(name) >= 8) return { err: "You've reached the limit of 8 quarters. Complete your current portions first." };
+    if (countActive(name) >= claimLimit) return { err: `You've reached the limit of ${claimLimit} quarters. Complete your current portions first.` };
 
     // Optimistic update — UI is instant; revert on error
     const now = new Date().toISOString();
@@ -218,7 +225,7 @@ export function useKhatamState(slug: string) {
   const onBookJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
     const juzSlots = slots.filter(s => s.juz === juz);
     if (juzSlots.some(s => s.status !== "av")) return { err: "Some quarters in this Juz are no longer available." };
-    if (countActive(name) + 4 > 8) return { err: "Claiming a full Juz would exceed the limit of 8 active quarters." };
+    if (countActive(name) + 4 > claimLimit) return { err: `Claiming a full Juz would exceed the limit of ${claimLimit} active quarters.` };
 
     // Optimistic update
     const now = new Date().toISOString();
@@ -372,6 +379,15 @@ export function useKhatamState(slug: string) {
     }
   };
 
+  const loadParticipants = useCallback(async () => {
+    try {
+      const { participants: list } = await api.adminGetParticipants(slug, adminPin);
+      setParticipants(list);
+    } catch {
+      // Non-fatal — participants list just stays empty
+    }
+  }, [slug, adminPin]);
+
   const tryAdmin = async () => {
     try {
       const { valid } = await api.verifyPin(slug, adminPin);
@@ -379,6 +395,13 @@ export function useKhatamState(slug: string) {
         setAdminMode(true);
         setAdminErr("");
         toast.success("Admin mode active");
+        // Load participants and sync claim limit input on unlock
+        try {
+          const { participants: list } = await api.adminGetParticipants(slug, adminPin);
+          setParticipants(list);
+        } catch { /* non-fatal */ }
+        const current = khatams.find(k => k.id === selectedKhatamId);
+        if (current) setClaimLimitInput(current.claim_limit ?? 8);
       } else {
         setAdminErr("Incorrect pin");
       }
@@ -387,26 +410,78 @@ export function useKhatamState(slug: string) {
     }
   };
 
-  const adminSetStatus = async (st: StatusKey) => {
-    if (!adminSelected || !adminMode) return;
-    const { juz, q } = adminSelected;
+  const adminSetStatus = async (st: StatusKey, assignedTo?: string, juzOverride?: number, qOverride?: number) => {
+    const juz = juzOverride ?? adminSelected?.juz;
+    const q = qOverride ?? adminSelected?.q;
+    if (!juz || !q || !adminMode) return;
 
     try {
-      await api.adminSetStatus(slug, adminPin, juz, q, st);
+      await api.adminSetStatus(slug, adminPin, juz, q, st, assignedTo);
     } catch (e: any) {
       toast.error(e.message || "Failed to update status");
       return;
     }
 
-    toast(`Set to ${COLORS[st].label}`);
+    const label = assignedTo ? `${COLORS[st].label} → ${assignedTo}` : `Set to ${COLORS[st].label}`;
+    toast(label);
     await loadSlots(selectedKhatamId!);
     await loadKhatams();
+  };
+
+  const adminAssignJuz = async (juz: number, st: StatusKey, assignedTo?: string) => {
+    if (!adminMode) return;
+
+    try {
+      await api.adminAssignJuz(slug, adminPin, juz, st, assignedTo);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to assign Juz");
+      return;
+    }
+
+    const label = assignedTo ? `Juz ${juz} → ${assignedTo}` : `Juz ${juz} set to ${COLORS[st].label}`;
+    toast(label);
+    await loadSlots(selectedKhatamId!);
+    await loadKhatams();
+  };
+
+  const adminSaveClaimLimit = async () => {
+    if (!adminMode) return;
+    try {
+      await api.adminSetClaimLimit(slug, adminPin, claimLimitInput);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update claim limit");
+      return;
+    }
+    toast.success(`Claim limit set to ${claimLimitInput}`);
+    await loadKhatams();
+  };
+
+  const adminAddParticipant = async (name: string) => {
+    if (!adminMode || !name.trim()) return;
+    try {
+      await api.adminAddParticipant(slug, adminPin, name.trim());
+      setParticipants(prev => prev.includes(name.trim()) ? prev : [...prev, name.trim()]);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add participant");
+    }
+  };
+
+  const adminRemoveParticipant = async (name: string) => {
+    if (!adminMode) return;
+    try {
+      await api.adminRemoveParticipant(slug, adminPin, name);
+      setParticipants(prev => prev.filter(p => p !== name));
+    } catch (e: any) {
+      toast.error(e.message || "Failed to remove participant");
+    }
   };
 
   const deactivateAdmin = () => {
     setAdminMode(false);
     setAdminSelected(null);
+    setAdminDrawer(null);
     setAdminPin("");
+    setParticipants([]);
     toast("Admin mode off");
   };
 
@@ -427,9 +502,9 @@ export function useKhatamState(slug: string) {
     await loadKhatams();
   };
 
-  const adminResetJuzToAvailable = async () => {
-    if (!selectedKhatamId || !adminSelected || !adminMode) return;
-    const { juz } = adminSelected;
+  const adminResetJuzToAvailable = async (juzOverride?: number) => {
+    const juz = juzOverride ?? adminSelected?.juz;
+    if (!selectedKhatamId || !juz || !adminMode) return;
     const confirmed = window.confirm(`Reset all quarters in Juz ${juz} to Available?`);
     if (!confirmed) return;
 
@@ -491,17 +566,24 @@ export function useKhatamState(slug: string) {
     slug, slots, khatamNum, khatamName, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
+    claimLimit,
     showNamesOnGlobe: selectedKhatamInfo?.show_names_on_globe ?? true,
     locationCountry: selectedKhatamInfo?.location_country ?? null,
     adminMode, adminSelected, setAdminSelected,
+    adminDrawer, setAdminDrawer,
     adminPin, setAdminPin, adminErr,
     newKhatamName, setNewKhatamName,
+    participants,
+    claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
-    tryAdmin, adminSetStatus, deactivateAdmin,
+    tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
+    adminSaveClaimLimit,
+    adminAddParticipant, adminRemoveParticipant,
+    loadParticipants,
   };
 }

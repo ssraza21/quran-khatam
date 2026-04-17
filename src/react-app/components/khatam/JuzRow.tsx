@@ -11,11 +11,12 @@ interface JuzRowProps {
   onSelect: (juz: number, q: number) => void;
   onOpenModal: (juz: number, q: number) => void;
   onClaimJuz?: (juz: number) => void;
+  onAdminClaimJuz?: (juz: number) => void;
   isSolo?: boolean;
   onSoloToggle?: (juz: number, q: number) => void;
 }
 
-export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal, onClaimJuz, isSolo, onSoloToggle }: JuzRowProps) {
+export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal, onClaimJuz, onAdminClaimJuz, isSolo, onSoloToggle }: JuzRowProps) {
   const [open, setOpen] = useState(false);
   const jSlots = slots.filter(s => s.juz === juz);
   const done = jSlots.filter(s => s.status === "dn").length;
@@ -68,6 +69,14 @@ export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect,
             className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border border-[#8B0000]/30 text-[#8B0000] bg-[#FFF5F5] hover:bg-[#8B0000] hover:text-white transition-colors duration-150"
           >
             Claim Juz
+          </button>
+        )}
+        {!isSolo && adminMode && onAdminClaimJuz && (
+          <button
+            onClick={e => { e.stopPropagation(); onAdminClaimJuz(juz); }}
+            className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border border-[#8B0000]/40 text-[#8B0000] bg-[#FFF5F5] hover:bg-[#8B0000] hover:text-white transition-colors duration-150"
+          >
+            Assign Juz
           </button>
         )}
       </div>

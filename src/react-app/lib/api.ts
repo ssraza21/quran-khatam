@@ -26,6 +26,7 @@ export interface KhatamMeta {
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
+  claim_limit?: number;
   location_city?: string | null;
   location_country?: string | null;
   location_lat?: number | null;
@@ -97,10 +98,44 @@ export const api = {
     });
   },
 
-  adminSetStatus(slug: string, pin: string, juz: number, q: number, status: string) {
+  adminSetStatus(slug: string, pin: string, juz: number, q: number, status: string, name?: string) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/set-status`, {
       method: "POST",
-      body: JSON.stringify({ pin, juz, q, status }),
+      body: JSON.stringify({ pin, juz, q, status, name }),
+    });
+  },
+
+  adminAssignJuz(slug: string, pin: string, juz: number, status: string, name?: string) {
+    return request<{ ok: boolean }>(`/khatams/${slug}/admin/assign-juz`, {
+      method: "POST",
+      body: JSON.stringify({ pin, juz, status, name }),
+    });
+  },
+
+  adminSetClaimLimit(slug: string, pin: string, limit: number) {
+    return request<{ ok: boolean; claim_limit: number }>(`/khatams/${slug}/admin/set-claim-limit`, {
+      method: "POST",
+      body: JSON.stringify({ pin, limit }),
+    });
+  },
+
+  adminGetParticipants(slug: string, pin: string) {
+    return request<{ participants: string[] }>(
+      `/khatams/${slug}/admin/participants?pin=${encodeURIComponent(pin)}`
+    );
+  },
+
+  adminAddParticipant(slug: string, pin: string, name: string) {
+    return request<{ ok: boolean }>(`/khatams/${slug}/admin/participants`, {
+      method: "POST",
+      body: JSON.stringify({ pin, name }),
+    });
+  },
+
+  adminRemoveParticipant(slug: string, pin: string, name: string) {
+    return request<{ ok: boolean }>(`/khatams/${slug}/admin/participants`, {
+      method: "DELETE",
+      body: JSON.stringify({ pin, name }),
     });
   },
 
