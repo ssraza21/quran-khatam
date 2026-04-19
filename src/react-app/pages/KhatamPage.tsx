@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useKhatamState } from "@/hooks/useKhatamState";
-import { COLORS, JUZ_NAMES, Q_SHORT } from "@/lib/constants";
+import { COLORS, JUZ_NAMES } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
