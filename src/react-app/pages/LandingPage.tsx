@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
 import { COUNTRIES } from "@/lib/countries";
+import type { CampaignPublic } from "@/lib/types";
+import CreateKhatamDrawer from "@/components/khatam/CreateKhatamDrawer";
+
+const FEATURED_CAMPAIGN_SLUG = "masjid-al-aqsa";
 
 function nameToSlug(name: string): string {
   return name
@@ -18,9 +22,17 @@ const LANDING_SECTION_HIGHLIGHT_MS = 2600;
 export default function LandingPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const createCardRef = useRef<HTMLDivElement>(null);
   const joinCardRef = useRef<HTMLDivElement>(null);
   const [highlightedCard, setHighlightedCard] = useState<null | "create" | "join">(null);
+
+  // Featured campaign
+  const [featuredCampaign, setFeaturedCampaign] = useState<CampaignPublic | null>(null);
+  const [campaignDrawerOpen, setCampaignDrawerOpen] = useState(false);
+  useEffect(() => {
+    api.getCampaign(FEATURED_CAMPAIGN_SLUG).then(setFeaturedCampaign).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const id = location.hash.replace(/^#/, "");
@@ -48,6 +60,7 @@ export default function LandingPage() {
   const [cErr, setCErr] = useState("");
   const [cLoading, setCLoading] = useState(false);
   const [isSolo, setIsSolo] = useState(false);
+  const [cCampaignSlug, setCCampaignSlug] = useState(() => searchParams.get("campaign") ?? "");
 
   // Location state (for create form)
   const [cCountry, setCCountry] = useState("");
@@ -104,6 +117,7 @@ export default function LandingPage() {
         selectedCountry?.lat,
         selectedCountry?.lng,
         isSolo ? undefined : cShowNames,
+        isSolo ? undefined : (cCampaignSlug.trim() || undefined),
       );
       navigate(`/k/${result.slug}`);
     } catch (err: any) {
@@ -183,6 +197,71 @@ export default function LandingPage() {
           </p>
         </div>
       </section> */}
+
+      {/* Featured Campaign Banner */}
+      {featuredCampaign && (
+        <section className="px-5 py-12 md:py-16" style={{ background: "linear-gradient(135deg, #14532d 0%, #052e16 100%)" }}>
+          <div className="max-w-[900px] mx-auto">
+            <div className="flex flex-col md:flex-row md:items-center gap-8">
+              <div className="flex-1">
+                <p className="text-xs uppercase tracking-[4px] text-green-300 font-medium mb-2">Featured Campaign</p>
+                <h2 className="text-2xl md:text-3xl text-white mb-3" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  {featuredCampaign.name}
+                </h2>
+                <p className="text-green-100/80 text-sm leading-relaxed mb-5 max-w-[520px]">
+                  {featuredCampaign.description}
+                </p>
+                {featuredCampaign.goal > 0 && (
+                  <div className="mb-5">
+                    <div className="flex items-end justify-between mb-1.5">
+                      <div>
+                        <span className="text-2xl font-bold text-white">{featuredCampaign.stats.total_khatams.toLocaleString()}</span>
+                        <span className="text-sm text-green-300 ml-1">/ {featuredCampaign.goal.toLocaleString()} khatams</span>
+                      </div>
+                      <span className="text-xs text-green-300 font-medium">
+                        {Math.round((featuredCampaign.stats.total_khatams / featuredCampaign.goal) * 100)}% of goal
+                      </span>
+                    </div>
+                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-green-400 rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min((featuredCampaign.stats.total_khatams / featuredCampaign.goal) * 100, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-green-300/60 mt-1">
+                      {(featuredCampaign.goal - featuredCampaign.stats.total_khatams).toLocaleString()} more khatams to reach the goal
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-4 mb-6">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">{featuredCampaign.stats.completed_khatams.toLocaleString()}</div>
+                    <div className="text-xs text-green-300 uppercase tracking-wider">Completed</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">{featuredCampaign.stats.slots_done.toLocaleString()}</div>
+                    <div className="text-xs text-green-300 uppercase tracking-wider">Portions Done</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setCampaignDrawerOpen(true)}
+                    className="bg-green-500 hover:bg-green-400 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+                  >
+                    Start a Khatam for This Campaign
+                  </button>
+                  <Link
+                    to={`/campaigns/${featuredCampaign.slug}`}
+                    className="inline-block border border-green-400/40 text-green-200 hover:bg-white/10 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+                  >
+                    View Campaign
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* How It Works */}
       <section className="py-16 md:py-20 px-5 bg-white">
@@ -319,6 +398,29 @@ export default function LandingPage() {
                   </div>
                 )}
 
+                {/* Campaign (community only) */}
+                {!isSolo && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">
+                      Campaign <span className="text-gray-300 normal-case font-normal tracking-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cCampaignSlug}
+                      onChange={e => setCCampaignSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 60))}
+                      placeholder="e.g. masjid-al-aqsa"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                    />
+                    {cCampaignSlug && (
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Your khatam will be counted toward the{" "}
+                        <Link to={`/campaigns/${cCampaignSlug}`} className="text-[#8B0000] hover:underline">{cCampaignSlug}</Link>
+                        {" "}campaign.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Location (optional) */}
                 <div className="border-t border-gray-100 pt-4">
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -444,6 +546,15 @@ export default function LandingPage() {
           </p>
         </div>
       </section>
+
+      {featuredCampaign && (
+        <CreateKhatamDrawer
+          open={campaignDrawerOpen}
+          onOpenChange={setCampaignDrawerOpen}
+          campaignSlug={featuredCampaign.slug}
+          campaignName={featuredCampaign.name}
+        />
+      )}
     </>
   );
 }
