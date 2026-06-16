@@ -100,3 +100,6 @@ GRANT ALL ON TABLE khatam_public.khatam_participants TO service_role;
 GRANT SELECT ON TABLE khatam_public.khatam_participants TO anon, authenticated;
 GRANT ALL ON SEQUENCE khatam_public.khatam_participants_id_seq TO service_role;
 GRANT USAGE ON SEQUENCE khatam_public.khatam_participants_id_seq TO anon, authenticated;
+
+-- Migration: Per-participant claim limit override (NULL = use khatam default)
+ALTER TABLE khatam_public.khatam_participants ADD COLUMN IF NOT EXISTS claim_limit INT;

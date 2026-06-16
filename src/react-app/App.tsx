@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import LandingPage from "./pages/LandingPage";
 import KhatamPage from "./pages/KhatamPage";
+import AdminPage from "./pages/AdminPage";
 import MetricsPage from "./pages/MetricsPage";
 import GlobePage from "./pages/GlobePage";
 import { CompletionToastProvider } from "./components/ui/CompletionToast";
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/k/:slug" element={<KhatamPage />} />
           <Route path="/k/:slug/metrics" element={<MetricsPage />} />
+          <Route path="/k/:slug/admin" element={<AdminPage />} />
           <Route path="/globe" element={<GlobePage />} />
         </Route>
         {/* Redirect old routes */}

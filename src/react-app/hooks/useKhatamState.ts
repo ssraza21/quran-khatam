@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import type { Slot, StatusKey } from "@/lib/types";
 import { Q_SHORT, COLORS } from "@/lib/constants";
 import { supabasePublic } from "@/lib/supabase";
-import { api } from "@/lib/api";
+import { api, type ParticipantInfo } from "@/lib/api";
+import { getStoredAdminPin, storeAdminPin, clearAdminPin } from "@/lib/adminSession";
 
 export interface KhatamInfo {
   id: number;
@@ -47,10 +48,10 @@ export function useKhatamState(slug: string) {
   const [adminMode, setAdminMode] = useState(false);
   const [adminSelected, setAdminSelected] = useState<{ juz: number; q: number } | null>(null);
   const [adminDrawer, setAdminDrawer] = useState<{ juz: number; q: number } | null>(null);
-  const [adminPin, setAdminPin] = useState("");
+  const [adminPin, setAdminPin] = useState(() => getStoredAdminPin(slug));
   const [adminErr, setAdminErr] = useState("");
   const [newKhatamName, setNewKhatamName] = useState("");
-  const [participants, setParticipants] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<ParticipantInfo[]>([]);
   const [claimLimitInput, setClaimLimitInput] = useState<number>(8);
   const lastSlug = useRef(slug);
 
@@ -199,10 +200,16 @@ export function useKhatamState(slug: string) {
 
   const claimLimit = khatams.find(k => k.id === selectedKhatamId)?.claim_limit ?? 8;
 
+  const getClaimLimitForName = useCallback((name: string) => {
+    const override = participants.find(p => p.name.toLowerCase() === name.toLowerCase())?.claim_limit;
+    return override ?? claimLimit;
+  }, [participants, claimLimit]);
+
   const onBook = async (juz: number, q: number, name: string): Promise<{ err: string } | undefined> => {
     const slot = getSlot(juz, q);
     if (slot.status !== "av") return { err: "This quarter was just claimed. Please choose another." };
-    if (countActive(name) >= claimLimit) return { err: `You've reached the limit of ${claimLimit} quarters. Complete your current portions first.` };
+    const limit = getClaimLimitForName(name);
+    if (countActive(name) >= limit) return { err: `You've reached the limit of ${limit} quarters. Complete your current portions first.` };
 
     // Optimistic update — UI is instant; revert on error
     const now = new Date().toISOString();
@@ -225,7 +232,8 @@ export function useKhatamState(slug: string) {
   const onBookJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
     const juzSlots = slots.filter(s => s.juz === juz);
     if (juzSlots.some(s => s.status !== "av")) return { err: "Some quarters in this Juz are no longer available." };
-    if (countActive(name) + 4 > claimLimit) return { err: `Claiming a full Juz would exceed the limit of ${claimLimit} active quarters.` };
+    const limit = getClaimLimitForName(name);
+    if (countActive(name) + 4 > limit) return { err: `Claiming a full Juz would exceed the limit of ${limit} active quarters.` };
 
     // Optimistic update
     const now = new Date().toISOString();
@@ -262,6 +270,34 @@ export function useKhatamState(slug: string) {
     } catch (e: any) {
       setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
       return { err: e.message || "Failed to mark complete. Please try again." };
+    }
+
+    await loadKhatams();
+  };
+
+  const onCompleteJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
+    const juzSlots = slots.filter(s => s.juz === juz);
+    if (!juzSlots.every(s => s.status === "cl")) {
+      return { err: "All 4 quarters must be in progress before completing the Juz." };
+    }
+    const owner = juzSlots[0]?.by;
+    if (owner && name.toLowerCase() !== owner.toLowerCase()) {
+      return { err: `This Juz was claimed by ${owner}. Names don't match.` };
+    }
+
+    const now = new Date().toISOString();
+    setSlots(prev => prev.map(s =>
+      s.juz === juz ? { ...s, status: "dn" as const, done_at: now } : s
+    ));
+
+    try {
+      await api.completeJuz(slug, juz, name, selectedKhatamId ?? undefined);
+    } catch (e: any) {
+      setSlots(prev => prev.map(s => {
+        const orig = juzSlots.find(o => o.juz === s.juz && o.q === s.q);
+        return orig && s.juz === juz ? orig : s;
+      }));
+      return { err: e.message || "Failed to complete Juz. Please try again." };
     }
 
     await loadKhatams();
@@ -394,6 +430,7 @@ export function useKhatamState(slug: string) {
       if (valid) {
         setAdminMode(true);
         setAdminErr("");
+        storeAdminPin(slug, adminPin);
         toast.success("Admin mode active");
         // Load participants and sync claim limit input on unlock
         try {
@@ -404,11 +441,29 @@ export function useKhatamState(slug: string) {
         if (current) setClaimLimitInput(current.claim_limit ?? 8);
       } else {
         setAdminErr("Incorrect pin");
+        clearAdminPin(slug);
       }
     } catch {
       setAdminErr("Failed to verify pin");
     }
   };
+
+  // Restore admin session from sessionStorage (same browser tab)
+  useEffect(() => {
+    const stored = getStoredAdminPin(slug);
+    if (!stored || adminMode) return;
+    setAdminPin(stored);
+    api.verifyPin(slug, stored).then(({ valid }) => {
+      if (valid) {
+        setAdminMode(true);
+        api.adminGetParticipants(slug, stored).then(({ participants: list }) => {
+          setParticipants(list);
+        }).catch(() => {});
+      } else {
+        clearAdminPin(slug);
+      }
+    }).catch(() => clearAdminPin(slug));
+  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const adminSetStatus = async (st: StatusKey, assignedTo?: string, juzOverride?: number, qOverride?: number) => {
     const juz = juzOverride ?? adminSelected?.juz;
@@ -460,7 +515,11 @@ export function useKhatamState(slug: string) {
     if (!adminMode || !name.trim()) return;
     try {
       await api.adminAddParticipant(slug, adminPin, name.trim());
-      setParticipants(prev => prev.includes(name.trim()) ? prev : [...prev, name.trim()]);
+      setParticipants(prev =>
+        prev.some(p => p.name.toLowerCase() === name.trim().toLowerCase())
+          ? prev
+          : [...prev, { name: name.trim(), claim_limit: null }],
+      );
     } catch (e: any) {
       toast.error(e.message || "Failed to add participant");
     }
@@ -470,9 +529,22 @@ export function useKhatamState(slug: string) {
     if (!adminMode) return;
     try {
       await api.adminRemoveParticipant(slug, adminPin, name);
-      setParticipants(prev => prev.filter(p => p !== name));
+      setParticipants(prev => prev.filter(p => p.name !== name));
     } catch (e: any) {
       toast.error(e.message || "Failed to remove participant");
+    }
+  };
+
+  const adminSetParticipantLimit = async (name: string, limit: number | null) => {
+    if (!adminMode) return;
+    try {
+      await api.adminSetParticipantLimit(slug, adminPin, name, limit);
+      setParticipants(prev => prev.map(p =>
+        p.name === name ? { ...p, claim_limit: limit } : p
+      ));
+      toast.success(limit ? `${name}'s limit set to ${limit}` : `${name} now uses the default limit`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update participant limit");
     }
   };
 
@@ -482,6 +554,7 @@ export function useKhatamState(slug: string) {
     setAdminDrawer(null);
     setAdminPin("");
     setParticipants([]);
+    clearAdminPin(slug);
     toast("Admin mode off");
   };
 
@@ -576,14 +649,14 @@ export function useKhatamState(slug: string) {
     participants,
     claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
+    getSlot, onBook, onBookJuz, onComplete, onCompleteJuz, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
     tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
     adminSaveClaimLimit,
-    adminAddParticipant, adminRemoveParticipant,
+    adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     loadParticipants,
   };
 }

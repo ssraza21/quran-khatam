@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Slot } from "@/lib/types";
 import { COLORS, Q_LABELS, JUZ_NAMES } from "@/lib/constants";
-import { timeAgo, buildWhatsAppKhatamMessage } from "@/lib/helpers";
+import { timeAgo, buildWhatsAppKhatamMessage, juzReadyToComplete, juzOwnerName } from "@/lib/helpers";
 import { toast } from "sonner";
 
 interface SlotDrawerProps {
@@ -19,6 +19,7 @@ interface SlotDrawerProps {
   onBook: (juz: number, q: number, name: string) => Promise<{ err: string } | undefined>;
   onBookJuz: (juz: number, name: string) => Promise<{ err: string } | undefined>;
   onComplete: (juz: number, q: number, name: string) => Promise<{ err: string } | undefined>;
+  onCompleteJuz: (juz: number, name: string) => Promise<{ err: string } | undefined>;
   khatamName: string;
   slug: string;
   slots: Slot[];
@@ -30,7 +31,7 @@ type SuccessType = "claimed" | "completed" | null;
 
 export default function SlotDrawer({
   slot, juz, q, open, onClose,
-  onBook, onBookJuz, onComplete,
+  onBook, onBookJuz, onComplete, onCompleteJuz,
   khatamName, slug, slots,
   defaultName = "",
   onNameUsed,
@@ -43,18 +44,27 @@ export default function SlotDrawer({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isJuzMode = q === 0;
+  const juzSlots = slots.filter(s => s.juz === juz);
+  const juzCanClaim = isJuzMode && juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
+  const juzCanComplete = isJuzMode && juzReadyToComplete(slots, juz);
 
   useEffect(() => {
     if (open) {
-      setName(defaultName);
+      let initialName = defaultName;
+      if (!isJuzMode && slot?.status === "cl" && slot.by) {
+        initialName = slot.by;
+      } else if (isJuzMode && juzCanComplete) {
+        initialName = juzOwnerName(slots, juz) ?? defaultName;
+      }
+      setName(initialName);
       setErr("");
       setSuccess(null);
       setCopied(false);
       setLoading(false);
       // Only auto-focus the input if there's no name pre-filled (otherwise button is the focus target)
-      if (!defaultName) setTimeout(() => inputRef.current?.focus(), 200);
+      if (!defaultName && !initialName) setTimeout(() => inputRef.current?.focus(), 200);
     }
-  }, [open, defaultName]);
+  }, [open, defaultName, isJuzMode, slot, juz, slots, juzCanComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isJuzMode && !slot) return null;
 
@@ -100,6 +110,16 @@ export default function SlotDrawer({
     setSuccess("completed");
   };
 
+  const doCompleteJuz = async () => {
+    if (!name.trim()) { setErr("Please enter your name"); return; }
+    setLoading(true);
+    const res = await onCompleteJuz(juz, name.trim());
+    setLoading(false);
+    if (res?.err) { setErr(res.err); return; }
+    onNameUsed?.(name.trim());
+    setSuccess("completed");
+  };
+
   const handleClose = () => {
     setSuccess(null);
     onClose();
@@ -111,7 +131,9 @@ export default function SlotDrawer({
         <DrawerHeader className="pt-6 pb-2 flex-none">
           <DrawerTitle className="text-xl" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
             {isJuzMode
-              ? `Juz ${juz} — Entire Juz`
+              ? juzCanComplete
+                ? `Juz ${juz} — Mark Complete`
+                : `Juz ${juz} — Entire Juz`
               : `Juz ${juz} — ${Q_LABELS[q - 1]}`}
           </DrawerTitle>
           <DrawerDescription style={{ fontFamily: "'Amiri', serif", fontSize: 16 }}>
@@ -185,7 +207,7 @@ export default function SlotDrawer({
           {!success && (
             <>
               {/* Juz mode */}
-              {isJuzMode && (
+              {isJuzMode && juzCanClaim && (
                 <div>
                   <div className="flex items-center gap-2 rounded-full px-3.5 py-1.5 mb-4 w-fit"
                     style={{ background: COLORS.av.accentBg, border: `1px solid ${COLORS.av.border}` }}>
@@ -205,6 +227,34 @@ export default function SlotDrawer({
                   />
                   {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
                 </div>
+              )}
+
+              {isJuzMode && juzCanComplete && (
+                <div>
+                  <div className="flex items-center gap-2 rounded-full px-3.5 py-1.5 mb-4 w-fit"
+                    style={{ background: COLORS.cl.accentBg, border: `1px solid ${COLORS.cl.border}` }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: COLORS.cl.accent }} />
+                    <span className="text-[13px] font-medium" style={{ color: COLORS.cl.text }}>
+                      All 4 quarters in progress — {juzOwnerName(slots, juz)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-3">Confirm your name to mark the entire Juz complete:</p>
+                  <input
+                    ref={inputRef}
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && doCompleteJuz()}
+                    placeholder="Your name"
+                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 rounded-lg text-[15px] outline-none focus:border-success focus:ring-2 focus:ring-success/10 transition-all mb-2"
+                  />
+                  {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+                </div>
+              )}
+
+              {isJuzMode && !juzCanClaim && !juzCanComplete && (
+                <p className="text-sm text-gray-500 py-4 text-center">
+                  This Juz is partially claimed or already complete. Open individual quarters from the list view.
+                </p>
               )}
 
               {/* Quarter mode */}
@@ -273,13 +323,22 @@ export default function SlotDrawer({
 
               <div className="pb-32">
                 <DrawerFooter className="px-0 pt-4 pb-0">
-                  {isJuzMode && (
+                  {isJuzMode && juzCanClaim && (
                     <Button
                       onClick={doBookJuz}
                       disabled={loading}
                       className="w-full h-12 rounded-full text-[15px] font-semibold bg-primary hover:bg-primary-dark text-white cursor-pointer disabled:opacity-50"
                     >
                       {loading ? "Claiming..." : "Claim Entire Juz"}
+                    </Button>
+                  )}
+                  {isJuzMode && juzCanComplete && (
+                    <Button
+                      onClick={doCompleteJuz}
+                      disabled={loading}
+                      className="w-full h-12 rounded-full text-[15px] font-semibold bg-success hover:bg-[#1B5E20] text-white cursor-pointer disabled:opacity-50"
+                    >
+                      {loading ? "Saving..." : "Mark Entire Juz Complete"}
                     </Button>
                   )}
                   {!isJuzMode && slot?.status === "av" && (

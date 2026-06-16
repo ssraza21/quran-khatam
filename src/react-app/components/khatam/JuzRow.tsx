@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Slot } from "@/lib/types";
 import { JUZ_NAMES, COLORS } from "@/lib/constants";
+import { juzSlotsOwnedBy } from "@/lib/helpers";
 import QCard from "./QCard";
 
 interface JuzRowProps {
@@ -11,17 +12,20 @@ interface JuzRowProps {
   onSelect: (juz: number, q: number) => void;
   onOpenModal: (juz: number, q: number) => void;
   onClaimJuz?: (juz: number) => void;
+  onCompleteJuz?: (juz: number) => void;
   onAdminClaimJuz?: (juz: number) => void;
+  savedName?: string;
   isSolo?: boolean;
   onSoloToggle?: (juz: number, q: number) => void;
 }
 
-export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal, onClaimJuz, onAdminClaimJuz, isSolo, onSoloToggle }: JuzRowProps) {
+export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect, onOpenModal, onClaimJuz, onCompleteJuz, onAdminClaimJuz, savedName, isSolo, onSoloToggle }: JuzRowProps) {
   const [open, setOpen] = useState(false);
   const jSlots = slots.filter(s => s.juz === juz);
   const done = jSlots.filter(s => s.status === "dn").length;
   const allDone = done === 4;
   const allAvailable = jSlots.length === 4 && jSlots.every(s => s.status === "av");
+  const mineReady = !isSolo && !!savedName && juzSlotsOwnedBy(slots, juz, savedName);
 
   return (
     <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden transition-shadow duration-200 ${open ? "shadow-md" : "shadow-sm hover:shadow-md"}`}>
@@ -63,6 +67,14 @@ export default function JuzRow({ juz, slots, adminMode, adminSelected, onSelect,
             &#9660;
           </div>
         </div>
+        {!isSolo && !adminMode && mineReady && onCompleteJuz && (
+          <button
+            onClick={e => { e.stopPropagation(); onCompleteJuz(juz); }}
+            className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border border-green-600/40 text-green-700 bg-green-50 hover:bg-green-600 hover:text-white transition-colors duration-150"
+          >
+            Complete Juz
+          </button>
+        )}
         {!isSolo && !adminMode && allAvailable && onClaimJuz && (
           <button
             onClick={e => { e.stopPropagation(); onClaimJuz(juz); }}

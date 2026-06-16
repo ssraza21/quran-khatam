@@ -50,7 +50,24 @@ async function verifyAdmin(db: ReturnType<typeof createServiceClient>, slug: str
   return { valid, khatam: valid ? khatam : null };
 }
 
-// GET /api/globe — Aggregated globe data (all khatams with location)
+// Helper: per-participant claim limit override (null = use khatam default)
+async function resolveClaimLimit(
+  db: ReturnType<typeof createServiceClient>,
+  slug: string,
+  khatam: { claim_limit?: number | null },
+  name: string,
+): Promise<number> {
+  const { data } = await db
+    .from("khatam_participants")
+    .select("claim_limit")
+    .eq("slug", slug)
+    .ilike("name", name.trim())
+    .maybeSingle();
+
+  if (data?.claim_limit != null) return data.claim_limit;
+  return khatam.claim_limit ?? 8;
+}
+
 app.get("/api/globe", async (c) => {
   const db = createServiceClient(c.env);
 
@@ -253,9 +270,8 @@ app.post("/api/khatams/:slug/claim", async (c) => {
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
-  const claimLimit = khatam.claim_limit ?? 8;
+  const claimLimit = await resolveClaimLimit(db, slug, khatam, name.trim());
 
-  // Check active-claim limit
   const { count } = await db
     .from("slots")
     .select("*", { count: "exact", head: true })
@@ -297,7 +313,7 @@ app.post("/api/khatams/:slug/claim-juz", async (c) => {
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
 
-  const claimLimit = khatam.claim_limit ?? 8;
+  const claimLimit = await resolveClaimLimit(db, slug, khatam, name.trim());
 
   // Check active-claim limit
   const { count: activeCount } = await db
@@ -378,6 +394,61 @@ app.post("/api/khatams/:slug/complete", async (c) => {
   await checkCompletion(db, khatam.id);
 
   return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/complete-juz — Mark all 4 quarters of a Juz done (must be claimed by same person)
+app.post("/api/khatams/:slug/complete-juz", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { juz, name, khatam_id } = await c.req.json<{ juz: number; name: string; khatam_id?: number }>();
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  if (!juz || juz < 1 || juz > 30) return c.json({ error: "Invalid Juz number" }, 400);
+
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
+
+  const { data: juzSlots, error: fetchErr } = await db
+    .from("slots")
+    .select("*")
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz);
+
+  if (fetchErr || !juzSlots || juzSlots.length !== 4) {
+    return c.json({ error: "Juz not found" }, 404);
+  }
+
+  if (!juzSlots.every(s => s.status === "cl")) {
+    return c.json({ error: "All 4 quarters must be in progress before completing the Juz." }, 400);
+  }
+
+  const owners = [...new Set(juzSlots.map(s => s.claimed_by?.toLowerCase()).filter(Boolean))];
+  if (owners.length !== 1) {
+    return c.json({ error: "All 4 quarters must be claimed by the same person." }, 400);
+  }
+
+  if (name.trim().toLowerCase() !== owners[0]) {
+    return c.json({ error: `This Juz was claimed by ${juzSlots[0].claimed_by}. Names don't match.` }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("slots")
+    .update({ status: "dn", claimed_by: name.trim(), done_at: now })
+    .eq("khatam_id", khatam.id)
+    .eq("juz", juz)
+    .eq("status", "cl")
+    .select();
+
+  if (error) return c.json({ error: "Failed to complete Juz" }, 500);
+  if (!data || data.length < 4) {
+    return c.json({ error: "Some quarters changed while completing. Please try again." }, 409);
+  }
+
+  await checkCompletion(db, khatam.id);
+
+  return c.json({ ok: true, completed: data.length });
 });
 
 // POST /api/khatams/:slug/solo-toggle — Toggle a slot av↔dn for solo khatams
@@ -599,13 +670,18 @@ app.get("/api/khatams/:slug/admin/participants", async (c) => {
 
   const { data, error } = await db
     .from("khatam_participants")
-    .select("name")
+    .select("name, claim_limit")
     .eq("slug", slug)
     .order("created_at", { ascending: true });
 
   if (error) return c.json({ error: "Failed to fetch participants" }, 500);
 
-  return c.json({ participants: (data ?? []).map((r: { name: string }) => r.name) });
+  return c.json({
+    participants: (data ?? []).map((r: { name: string; claim_limit: number | null }) => ({
+      name: r.name,
+      claim_limit: r.claim_limit,
+    })),
+  });
 });
 
 // POST /api/khatams/:slug/admin/participants — Add a participant name
@@ -652,6 +728,31 @@ app.delete("/api/khatams/:slug/admin/participants", async (c) => {
   if (error) return c.json({ error: "Failed to remove participant" }, 500);
 
   return c.json({ ok: true });
+});
+
+// POST /api/khatams/:slug/admin/set-participant-limit — Per-person claim limit override for this slug
+app.post("/api/khatams/:slug/admin/set-participant-limit", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name, limit } = await c.req.json<{ pin: string; name: string; limit: number | null }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  if (limit !== null && (typeof limit !== "number" || limit < 1 || limit > 120)) {
+    return c.json({ error: "Limit must be between 1 and 120, or null for default" }, 400);
+  }
+
+  const { error } = await db
+    .from("khatam_participants")
+    .update({ claim_limit: limit })
+    .eq("slug", slug)
+    .ilike("name", name.trim());
+
+  if (error) return c.json({ error: "Failed to update participant limit" }, 500);
+
+  return c.json({ ok: true, name: name.trim(), claim_limit: limit });
 });
 
 // POST /api/khatams/:slug/admin/reset-all

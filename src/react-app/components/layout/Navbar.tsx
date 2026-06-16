@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from "react-router-dom";
-import { Menu, Home, Activity, BarChart2, UserPlus, LogIn } from "lucide-react";
+import { Menu, Home, Activity, BarChart2, UserPlus, LogIn, Shield } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ export default function Navbar() {
       ...baseItems,
       { name: "Tracker", path: `/k/${slug}`, icon: Activity },
       { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
+      { name: "Admin", path: `/k/${slug}/admin`, icon: Shield },
     ]
     : baseItems;
 

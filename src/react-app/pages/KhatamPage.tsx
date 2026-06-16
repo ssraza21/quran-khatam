@@ -5,14 +5,11 @@ import { COLORS, JUZ_NAMES } from "@/lib/constants";
 import type { StatusKey } from "@/lib/types";
 import JuzRow from "@/components/khatam/JuzRow";
 import SlotDrawer from "@/components/khatam/SlotDrawer";
-import AdminSlotDrawer from "@/components/khatam/AdminSlotDrawer";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
-import { buildWhatsAppKhatamMessage } from "@/lib/helpers";
+import { buildWhatsAppKhatamMessage, juzSlotsOwnedBy } from "@/lib/helpers";
 import { toast } from "sonner";
-import {
-  Users, UserPlus, X, BookOpen, Lock, RotateCcw, Trash2, Sliders,
-} from "lucide-react";
+import { Shield } from "lucide-react";
 
 export default function KhatamPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -45,28 +42,35 @@ export default function KhatamPage() {
     setShareAfterClaim({ juz });
   };
 
-  const [participantInput, setParticipantInput] = useState("");
+  const handleQuickCompleteJuz = async (juz: number) => {
+    if (!savedName) { setJuzModal(juz); return; }
+    setQuickClaimLoading(juz);
+    const res = await onCompleteJuz(juz, savedName);
+    setQuickClaimLoading(null);
+    if (res?.err) { toast.error(res.err); return; }
+    toast.success(`Juz ${juz} marked complete — الحمد لله`);
+  };
+
+  const handleJuzCardTap = (juz: number, allAvailable: boolean, mineReady: boolean) => {
+    if (mineReady && savedName) {
+      handleQuickCompleteJuz(juz);
+    } else if (allAvailable) {
+      handleQuickClaim(juz);
+    } else if (mineReady || allAvailable) {
+      setJuzModal(juz);
+    }
+  };
 
   const state = useKhatamState(slug ?? "");
   const {
     khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
-    isSolo, claimLimit,
-    showNamesOnGlobe, locationCountry,
-    adminMode, adminSelected, setAdminSelected,
-    adminDrawer, setAdminDrawer,
-    adminPin, setAdminPin, adminErr,
+    isSolo, adminMode,
     newKhatamName, setNewKhatamName,
-    participants, claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete,
-    getSlot, onBook, onBookJuz, onComplete, onSoloToggle,
+    getSlot, onBook, onBookJuz, onComplete, onCompleteJuz, onSoloToggle,
     selectKhatam,
     startNewKhatam, soloStartNewKhatam, soloResetAll, soloDeleteKhatam,
-    tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
-    adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
-    adminToggleGlobeNames,
-    adminSaveClaimLimit,
-    adminAddParticipant, adminRemoveParticipant,
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
@@ -150,6 +154,19 @@ export default function KhatamPage() {
             )}
             {!isSolo && (
               <Link
+                to={`/k/${slug}/admin`}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium no-underline transition-colors flex items-center gap-1.5 ${
+                  adminMode
+                    ? "bg-amber-400/25 border border-amber-300/50 text-white"
+                    : "bg-white/10 border border-white/25 text-white hover:bg-white/20"
+                }`}
+              >
+                <Shield size={12} />
+                {adminMode ? "Admin unlocked" : "Admin"}
+              </Link>
+            )}
+            {!isSolo && (
+              <Link
                 to={`/k/${slug}/metrics`}
                 className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
               >
@@ -230,7 +247,7 @@ export default function KhatamPage() {
       {/* View Toggle + Juz List */}
       <div className="max-w-[1200px] mx-auto px-5 py-6">
         {/* Toggle (community only — solo has no juz-level claim) */}
-        {!isSolo && !adminMode && (
+        {!isSolo && (
           <div className="flex items-center gap-3 mb-5">
             <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden shadow-sm">
               <button
@@ -247,13 +264,15 @@ export default function KhatamPage() {
               </button>
             </div>
             <p className="text-xs text-gray-400 hidden sm:block">
-              {viewMode === "juz" ? "Click a Juz to claim all 4 quarters at once" : "Expand a Juz to claim individual quarters"}
+              {viewMode === "juz"
+                ? "Tap a Juz to claim or complete all 4 quarters at once"
+                : "Expand a Juz to claim or complete individual quarters"}
             </p>
           </div>
         )}
 
         {/* Juz Grid View */}
-        {(viewMode === "juz" && !isSolo && !adminMode) && (
+        {(viewMode === "juz" && !isSolo) && (
           <>
             {/* "Claiming as" identity bar */}
             <div className="mb-4 flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
@@ -325,20 +344,22 @@ export default function KhatamPage() {
                 const claimedCount = juzSlots.filter(s => s.status === "cl").length;
                 const allDone = doneCount === 4;
                 const allAvailable = juzSlots.length === 4 && juzSlots.every(s => s.status === "av");
+                const mineReady = !!savedName && juzSlotsOwnedBy(slots, juz, savedName);
                 const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
                 const hasClaimed = claimedCount > 0 || (doneCount > 0 && !allDone);
                 const isLoading = quickClaimLoading === juz;
+                const isActionable = (allAvailable || mineReady) && !isLoading;
 
                 return (
                   <div
                     key={juz}
-                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${allAvailable && !isLoading ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
+                    className={`rounded-2xl p-4 border transition-all duration-200 select-none ${isActionable ? "cursor-pointer hover:shadow-md hover:border-[#8B0000]/40 hover:-translate-y-0.5 active:translate-y-0" : ""
                       }`}
                     style={{
-                      background: isLoading ? "#FFF5F5" : allDone ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
-                      borderColor: isLoading ? "#8B0000" : allDone ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
+                      background: isLoading ? "#FFF5F5" : allDone ? "#E8F5E9" : mineReady ? "#E8F5E9" : hasClaimed ? "#FFFDE7" : "white",
+                      borderColor: isLoading ? "#8B0000" : allDone ? "#2E7D32" : mineReady ? "#2E7D32" : hasClaimed ? "#F9A825" : "#E5E7EB",
                     }}
-                    onClick={() => allAvailable && !isLoading && handleQuickClaim(juz)}
+                    onClick={() => isActionable && handleJuzCardTap(juz, allAvailable, mineReady)}
                   >
                     <div
                       className="text-2xl font-bold leading-none"
@@ -375,6 +396,12 @@ export default function KhatamPage() {
 
                     {allDone && <p className="text-[11px] text-green-700 mt-2 font-semibold">✓ Complete</p>}
 
+                    {mineReady && !isLoading && (
+                      <div className="mt-2.5 text-[11px] font-semibold text-green-700">
+                        {savedName ? "Tap to mark complete" : "Tap to complete →"}
+                      </div>
+                    )}
+
                     {allAvailable && !isLoading && (
                       <div className="mt-2.5 text-[11px] font-semibold text-[#8B0000] opacity-60">
                         {savedName ? `Tap to claim` : "Tap to claim →"}
@@ -388,7 +415,7 @@ export default function KhatamPage() {
         )}
 
         {/* Quarters Accordion View */}
-        {(viewMode === "quarters" || isSolo || adminMode) && (
+        {(viewMode === "quarters" || isSolo) && (
           <>
             {isSolo && (
               <p className="text-xs text-gray-400 text-center mb-4">Tap a quarter to mark it complete. Tap again to undo.</p>
@@ -396,11 +423,12 @@ export default function KhatamPage() {
             <div className="flex flex-col gap-2.5">
               {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
                 <JuzRow key={juz} juz={juz} slots={slots}
-                  adminMode={adminMode} adminSelected={adminSelected}
-                  onSelect={(j, q) => { setAdminSelected({ juz: j, q }); setAdminDrawer({ juz: j, q }); }}
+                  adminMode={false} adminSelected={null}
+                  onSelect={() => {}}
                   onOpenModal={(j, q) => setModal({ juz: j, q })}
                   onClaimJuz={juzNum => setJuzModal(juzNum)}
-                  onAdminClaimJuz={juzNum => setAdminDrawer({ juz: juzNum, q: 0 })}
+                  onCompleteJuz={juzNum => savedName ? handleQuickCompleteJuz(juzNum) : setJuzModal(juzNum)}
+                  savedName={savedName}
                   isSolo={isSolo} onSoloToggle={onSoloToggle} />
               ))}
             </div>
@@ -467,204 +495,31 @@ export default function KhatamPage() {
         </section>
       )}
 
-      {/* Admin CTA Section (community only) */}
+      {/* Organizer admin CTA (community only) */}
       {!isSolo && (
-        <section className="text-white px-5 py-12"
-          style={{ background: "linear-gradient(135deg, #5A0000, #3A0000)" }}>
-          <div className="max-w-[600px] mx-auto">
-            <h2 className="text-2xl font-semibold text-white mb-1 text-center" style={{ fontFamily: "'Playfair Display', serif" }}>
-              Organizer Admin
+        <section className="border-t border-gray-200 bg-white px-5 py-10">
+          <div className="max-w-[600px] mx-auto text-center">
+            <div className="w-12 h-12 rounded-2xl bg-[#FFF5F5] border border-[#8B0000]/15 flex items-center justify-center mx-auto mb-3">
+              <Shield size={22} className="text-[#8B0000]" />
+            </div>
+            <h2
+              className="text-xl font-semibold text-gray-900 mb-1"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              Organizing this khatam?
             </h2>
-            <p className="opacity-60 mb-6 text-sm text-center">Manage the Khatam, assign quarters, and start new completions.</p>
-
-            {!adminMode ? (
-              <div className="flex gap-3 justify-center max-w-[400px] mx-auto">
-                <input type="password" value={adminPin} onChange={e => setAdminPin(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && tryAdmin()}
-                  placeholder="Admin pin"
-                  inputMode="numeric"
-                  className="flex-1 bg-white/10 border border-white/25 text-white px-4 py-2.5 rounded-full text-sm outline-none placeholder:text-white/40 focus:border-white/50 transition-colors"
-                />
-                <button onClick={tryAdmin}
-                  className="bg-white text-[#8B0000] border-none px-6 py-2.5 rounded-full text-sm font-semibold cursor-pointer hover:bg-gray-100 transition-colors">
-                  Unlock
-                </button>
-              </div>
-            ) : (
-              <div className="animate-fadeIn space-y-5">
-                <p className="text-green-300 text-center font-medium text-sm">
-                  Admin active — tap any quarter or Juz to assign it
-                </p>
-
-                {/* ── Participants ───────────────────────────────── */}
-                <div className="bg-white/8 border border-white/15 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users size={14} className="text-white/60" />
-                    <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Participants</span>
-                  </div>
-
-                  {/* Participant chips */}
-                  {participants.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {participants.map(p => (
-                        <span key={p} className="flex items-center gap-1 bg-white/10 border border-white/20 text-white text-xs px-2.5 py-1 rounded-full">
-                          {p}
-                          <button
-                            onClick={() => adminRemoveParticipant(p)}
-                            className="text-white/40 hover:text-white/80 transition-colors ml-0.5"
-                          >
-                            <X size={10} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {participants.length === 0 && (
-                    <p className="text-xs text-white/40 italic">No participants added yet</p>
-                  )}
-
-                  {/* Add participant */}
-                  <form
-                    onSubmit={async e => {
-                      e.preventDefault();
-                      const n = participantInput.trim();
-                      if (!n) return;
-                      await adminAddParticipant(n);
-                      setParticipantInput("");
-                    }}
-                    className="flex gap-2"
-                  >
-                    <input
-                      value={participantInput}
-                      onChange={e => setParticipantInput(e.target.value)}
-                      placeholder="Add participant name"
-                      maxLength={60}
-                      className="flex-1 bg-white/10 border border-white/25 text-white px-3 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-white/15 border border-white/30 text-white px-3 py-2 rounded-full text-sm cursor-pointer hover:bg-white/25 transition-colors flex items-center gap-1.5 font-medium whitespace-nowrap"
-                    >
-                      <UserPlus size={13} />
-                      Add
-                    </button>
-                  </form>
-                </div>
-
-                {/* ── Khatam Management ──────────────────────────── */}
-                <div className="bg-white/8 border border-white/15 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <BookOpen size={14} className="text-white/60" />
-                    <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Khatam</span>
-                  </div>
-
-                  {/* New khatam */}
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={newKhatamName}
-                      onChange={e => setNewKhatamName(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && startNewKhatam()}
-                      placeholder="Name (optional)"
-                      maxLength={60}
-                      className="flex-1 bg-white/10 border border-white/25 text-white px-3 py-2 rounded-full text-sm outline-none placeholder:text-white/35 focus:border-white/50 transition-colors"
-                    />
-                    <button
-                      onClick={startNewKhatam}
-                      className="bg-white text-[#8B0000] border-none px-4 py-2 rounded-full text-sm cursor-pointer font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap flex items-center gap-1.5"
-                    >
-                      <BookOpen size={13} />
-                      New Khatam
-                    </button>
-                  </div>
-
-                  {/* Claim limit */}
-                  <div className="flex gap-2 items-center">
-                    <Sliders size={13} className="text-white/50 shrink-0" />
-                    <span className="text-xs text-white/60 shrink-0">Claim limit</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={claimLimitInput}
-                      onChange={e => setClaimLimitInput(Number(e.target.value))}
-                      className="w-16 bg-white/10 border border-white/25 text-white px-2.5 py-1.5 rounded-lg text-sm outline-none text-center focus:border-white/50 transition-colors"
-                    />
-                    <span className="text-xs text-white/40 shrink-0">quarters per person</span>
-                    {claimLimitInput !== claimLimit && (
-                      <button
-                        onClick={adminSaveClaimLimit}
-                        className="ml-auto bg-white/15 border border-white/30 text-white text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-white/25 transition-colors font-medium"
-                      >
-                        Save
-                      </button>
-                    )}
-                  </div>
-
-                  {locationCountry && (
-                    <button
-                      onClick={adminToggleGlobeNames}
-                      className="w-full bg-white/10 border border-white/25 text-white/80 px-4 py-2 rounded-full text-xs cursor-pointer hover:bg-white/20 transition-colors text-left flex items-center gap-2"
-                    >
-                      🌍 {showNamesOnGlobe ? "Hide names on World Globe" : "Show names on World Globe"}
-                    </button>
-                  )}
-                </div>
-
-                {/* ── Controls ───────────────────────────────────── */}
-                <div className="flex justify-center">
-                  <button
-                    onClick={deactivateAdmin}
-                    className="bg-transparent border border-white/30 text-white/80 px-6 py-2.5 rounded-full text-sm cursor-pointer hover:bg-white/10 font-medium transition-colors flex items-center gap-2"
-                  >
-                    <Lock size={13} />
-                    Deactivate Admin
-                  </button>
-                </div>
-
-                {/* ── Danger Zone ────────────────────────────────── */}
-                <div className="bg-red-950/40 border border-red-400/20 rounded-2xl p-4 space-y-2">
-                  <span className="text-xs font-semibold text-red-300/60 uppercase tracking-wider">Danger zone</span>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={adminResetAllToAvailable}
-                      className="flex-1 min-w-[140px] bg-red-600/60 border border-red-300/40 text-white px-4 py-2.5 rounded-xl text-xs cursor-pointer hover:bg-red-600/80 transition-colors font-semibold flex items-center justify-center gap-1.5"
-                    >
-                      <RotateCcw size={12} />
-                      Reset All Slots
-                    </button>
-                    <button
-                      onClick={adminDeleteKhatam}
-                      className="flex-1 min-w-[140px] bg-black/50 border border-red-400/40 text-white px-4 py-2.5 rounded-xl text-xs cursor-pointer hover:bg-black/70 transition-colors font-semibold flex items-center justify-center gap-1.5"
-                    >
-                      <Trash2 size={12} />
-                      Delete Khatam
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {adminErr && <p className="text-red-300 mt-3 text-sm text-center">{adminErr}</p>}
+            <p className="text-sm text-gray-500 mb-5">
+              Assign quarters, update names, manage participants, and start new khatams from the admin panel.
+            </p>
+            <Link
+              to={`/k/${slug}/admin`}
+              className="inline-flex items-center gap-2 bg-[#8B0000] text-white px-6 py-2.5 rounded-full text-sm font-semibold no-underline hover:bg-[#6B0000] transition-colors"
+            >
+              <Shield size={14} />
+              {adminMode ? "Open admin panel" : "Go to admin panel"}
+            </Link>
           </div>
         </section>
-      )}
-
-      {/* Admin slot/juz assignment drawer (community only) */}
-      {!isSolo && adminMode && (
-        <AdminSlotDrawer
-          open={!!adminDrawer}
-          onClose={() => { setAdminDrawer(null); setAdminSelected(null); }}
-          juz={adminDrawer?.juz ?? 1}
-          q={adminDrawer?.q ?? 0}
-          slots={slots}
-          participants={participants}
-          onAssign={async (j, q, st, name) => {
-            setAdminSelected({ juz: j, q });
-            await adminSetStatus(st, name, j, q);
-          }}
-          onAssignJuz={async (j, st, name) => adminAssignJuz(j, st, name)}
-          onResetJuz={async (j) => adminResetJuzToAvailable(j)}
-        />
       )}
 
       {/* Quarter claim drawer (community only) */}
@@ -678,6 +533,7 @@ export default function KhatamPage() {
           onBook={onBook}
           onBookJuz={onBookJuz}
           onComplete={onComplete}
+          onCompleteJuz={onCompleteJuz}
           khatamName={khatamName || "Khatam"}
           slug={slug ?? ""}
           slots={slots}
@@ -697,6 +553,7 @@ export default function KhatamPage() {
           onBook={onBook}
           onBookJuz={onBookJuz}
           onComplete={onComplete}
+          onCompleteJuz={onCompleteJuz}
           khatamName={khatamName || "Khatam"}
           slug={slug ?? ""}
           slots={slots}

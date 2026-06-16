@@ -4,6 +4,7 @@ import {
 } from "@/components/ui/drawer";
 import { Circle, Clock, CheckCircle2, UserCheck, RotateCcw, X, UserPlus } from "lucide-react";
 import type { Slot, StatusKey } from "@/lib/types";
+import type { ParticipantInfo } from "@/lib/api";
 import { COLORS, Q_LABELS, JUZ_NAMES } from "@/lib/constants";
 import { timeAgo } from "@/lib/helpers";
 
@@ -14,7 +15,7 @@ interface AdminSlotDrawerProps {
   juz: number;
   q: number;
   slots: Slot[];
-  participants: string[];
+  participants: ParticipantInfo[];
   onAssign: (juz: number, q: number, status: StatusKey, name?: string) => Promise<void>;
   onAssignJuz: (juz: number, status: StatusKey, name?: string) => Promise<void>;
   onResetJuz: (juz: number) => Promise<void>;
@@ -36,7 +37,6 @@ export default function AdminSlotDrawer({
   const slot = !isJuzMode ? slots.find(s => s.juz === juz && s.q === q) ?? null : null;
   const juzSlots = slots.filter(s => s.juz === juz);
 
-  // Default status: "cl" when slot is available, otherwise keep current; juz mode always "cl"
   const defaultStatus: StatusKey = isJuzMode
     ? "cl"
     : (slot?.status === "av" ? "cl" : (slot?.status ?? "cl"));
@@ -51,7 +51,7 @@ export default function AdminSlotDrawer({
         isJuzMode ? "cl"
           : (slot?.status === "av" ? "cl" : (slot?.status ?? "cl"))
       );
-      setNameInput("");
+      setNameInput(slot?.by ?? "");
       setLoading(false);
     }
   }, [open, juz, q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,7 +78,6 @@ export default function AdminSlotDrawer({
     setNameInput(name);
   };
 
-  // Determine label: for set-available we skip the name field entirely
   const needsName = selectedStatus !== "av";
 
   return (
@@ -111,7 +110,6 @@ export default function AdminSlotDrawer({
 
         <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-5">
 
-          {/* Current state summary */}
           {!isJuzMode && slot && (
             <div className="flex items-center gap-2">
               <div
@@ -148,7 +146,6 @@ export default function AdminSlotDrawer({
             </div>
           )}
 
-          {/* Status selector */}
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Set status</p>
             <div className="flex gap-2">
@@ -173,25 +170,26 @@ export default function AdminSlotDrawer({
             </div>
           </div>
 
-          {/* Participant picker — hidden when setting to Available */}
           {needsName && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Assign to</p>
+              <p className="text-[11px] text-gray-500 mb-2">
+                They must use this exact name when marking complete.
+              </p>
 
-              {/* Pre-set participant chips */}
               {participants.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2.5">
                   {participants.map(p => (
                     <button
-                      key={p}
-                      onClick={() => selectParticipant(p)}
+                      key={p.name}
+                      onClick={() => selectParticipant(p.name)}
                       className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                        nameInput === p
+                        nameInput === p.name
                           ? "bg-[#8B0000] text-white border-[#8B0000]"
                           : "bg-white text-gray-600 border-gray-200 hover:border-[#8B0000]/40 hover:text-[#8B0000]"
                       }`}
                     >
-                      {p}
+                      {p.name}
                     </button>
                   ))}
                 </div>
@@ -218,7 +216,6 @@ export default function AdminSlotDrawer({
             </div>
           )}
 
-          {/* Action buttons */}
           <div className="space-y-2 pt-1">
             <button
               onClick={handleAssign}

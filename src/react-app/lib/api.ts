@@ -34,6 +34,11 @@ export interface KhatamMeta {
   show_names_on_globe?: boolean;
 }
 
+export interface ParticipantInfo {
+  name: string;
+  claim_limit: number | null;
+}
+
 export const api = {
   createKhatam(
     name: string,
@@ -98,6 +103,13 @@ export const api = {
     });
   },
 
+  completeJuz(slug: string, juz: number, name: string, khatamId?: number) {
+    return request<{ ok: boolean; completed: number }>(`/khatams/${slug}/complete-juz`, {
+      method: "POST",
+      body: JSON.stringify({ juz, name, khatam_id: khatamId }),
+    });
+  },
+
   adminSetStatus(slug: string, pin: string, juz: number, q: number, status: string, name?: string) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/set-status`, {
       method: "POST",
@@ -120,7 +132,7 @@ export const api = {
   },
 
   adminGetParticipants(slug: string, pin: string) {
-    return request<{ participants: string[] }>(
+    return request<{ participants: ParticipantInfo[] }>(
       `/khatams/${slug}/admin/participants?pin=${encodeURIComponent(pin)}`
     );
   },
@@ -137,6 +149,13 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ pin, name }),
     });
+  },
+
+  adminSetParticipantLimit(slug: string, pin: string, name: string, limit: number | null) {
+    return request<{ ok: boolean; name: string; claim_limit: number | null }>(
+      `/khatams/${slug}/admin/set-participant-limit`,
+      { method: "POST", body: JSON.stringify({ pin, name, limit }) },
+    );
   },
 
   adminResetAll(slug: string, pin: string) {

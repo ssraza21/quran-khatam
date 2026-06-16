@@ -1,5 +1,27 @@
 import type { Slot, StatusKey } from "./types";
 
+export function juzSlotsOwnedBy(slots: Slot[], juz: number, name: string): boolean {
+  const juzSlots = slots.filter(s => s.juz === juz);
+  if (juzSlots.length !== 4) return false;
+  return juzSlots.every(
+    s => s.status === "cl" && s.by?.toLowerCase() === name.toLowerCase()
+  );
+}
+
+export function juzReadyToComplete(slots: Slot[], juz: number): boolean {
+  const juzSlots = slots.filter(s => s.juz === juz);
+  if (juzSlots.length !== 4) return false;
+  if (!juzSlots.every(s => s.status === "cl")) return false;
+  const owners = [...new Set(juzSlots.map(s => s.by?.toLowerCase()).filter(Boolean))];
+  return owners.length === 1;
+}
+
+export function juzOwnerName(slots: Slot[], juz: number): string | null {
+  const juzSlots = slots.filter(s => s.juz === juz);
+  const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
+  return names.length === 1 ? names[0] : null;
+}
+
 export function buildWhatsAppKhatamMessage(khatamName: string, slug: string, slots: Slot[]): string {
   const lines: string[] = [];
   lines.push(`*${khatamName}*`);
