@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import type { Slot, StatusKey } from "@/lib/types";
 import { JUZ_NAMES, COLORS } from "@/lib/constants";
 import { supabasePublic } from "@/lib/supabase";
+import { api } from "@/lib/api";
 
 function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; size?: number; stroke?: number }) {
   const radius = (size - stroke) / 2;
@@ -66,21 +67,21 @@ export default function MetricsPage() {
   const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number; name: string | null }[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
   const [khatamName, setKhatamName] = useState("");
+  const [campaignName, setCampaignName] = useState("");
   const [notFound, setNotFound] = useState(false);
 
   const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
   const latestKhatamId = khatams.length > 0 ? khatams[khatams.length - 1].id : null;
 
   const loadKhatams = useCallback(async () => {
-    const { data } = await supabasePublic
-      .from("khatams")
-      .select("id, khatam_num, name")
-      .eq("slug", slug ?? "")
-      .order("khatam_num", { ascending: true });
-    if (data && data.length > 0) {
+    try {
+      const history = await api.getHistory(slug ?? "");
+      const data = [...history].sort((a, b) => a.khatam_num - b.khatam_num);
+      if (data.length === 0) throw new Error("Not found");
       const newestKhatamId = data[data.length - 1].id;
       setKhatams(data);
       setKhatamName(data[data.length - 1].name ?? "");
+      setCampaignName(data[data.length - 1].campaign_name ?? data[data.length - 1].name ?? "");
       setNotFound(false);
       setSelectedKhatamId(prev => {
         if (prev == null) return newestKhatamId;
@@ -88,7 +89,7 @@ export default function MetricsPage() {
         if (!stillExists) return newestKhatamId;
         return prev === latestKhatamId ? newestKhatamId : prev;
       });
-    } else {
+    } catch {
       setKhatams([]);
       setSelectedKhatamId(null);
       setSlots([]);
@@ -235,7 +236,7 @@ export default function MetricsPage() {
         <div className="relative max-w-[1200px] mx-auto">
           <h1 className="text-[42px] mb-1 font-normal tracking-widest text-white"
             style={{ fontFamily: "'Playfair Display', serif" }}>
-            {khatamName || "Khatam"} Live Metrics
+            {campaignName || khatamName || "Khatam"} Live Metrics
           </h1>
 
           <div className="inline-flex items-center gap-3 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">

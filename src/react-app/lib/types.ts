@@ -32,6 +32,11 @@ export interface KhatamPublic {
   location_lat?: number | null;
   location_lng?: number | null;
   show_names_on_globe?: boolean;
+  campaign_id?: number | null;
+  campaign_name?: string;
+  campaign_description?: string | null;
+  campaign_searchable?: boolean;
+  campaign_goal?: number;
 }
 
 export interface GlobeMarker {

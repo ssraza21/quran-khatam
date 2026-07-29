@@ -63,7 +63,8 @@ export default function KhatamPage() {
 
   const state = useKhatamState(slug ?? "");
   const {
-    khatamName, slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
+    khatamName, campaignName, campaignDescription, campaignGoal,
+    slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo, adminMode,
     newKhatamName, setNewKhatamName,
@@ -74,6 +75,10 @@ export default function KhatamPage() {
   } = state;
 
   const modalSlot = modal ? getSlot(modal.juz, modal.q) : null;
+  const completedKhatams = khatams.filter(khatam => khatam.done === khatam.total).length;
+  const inProgressKhatams = khatams.filter(
+    khatam => khatam.started && khatam.done < khatam.total,
+  ).length;
 
   const handleShare = () => {
     const url = `${window.location.origin}/k/${slug}`;
@@ -84,7 +89,7 @@ export default function KhatamPage() {
     });
   };
 
-  const waMessage = buildWhatsAppKhatamMessage(khatamName || "Khatam", slug ?? "", slots);
+  const waMessage = buildWhatsAppKhatamMessage(campaignName || khatamName || "Khatam", slug ?? "", slots);
   const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
 
   const handleWaCopy = () => {
@@ -135,8 +140,21 @@ export default function KhatamPage() {
         <div className="relative max-w-[1200px] mx-auto">
           <h1 className="text-[40px] sm:text-[46px] mb-1 font-normal tracking-widest text-white"
             style={{ fontFamily: "Playfair Display, serif" }}>
-            {khatamName || "Khatam"}
+            {campaignName || khatamName || "Khatam"}
           </h1>
+          {campaignDescription && (
+            <p className="max-w-2xl mx-auto mt-3 text-sm sm:text-base leading-relaxed text-white/75">
+              {campaignDescription}
+            </p>
+          )}
+          <p className="mt-3 text-xs font-medium uppercase tracking-[0.18em] text-white/55">
+            Round {khatamNum}{khatamName ? ` · ${khatamName}` : ""}
+          </p>
+          <p className="mt-2 text-xs text-white/65">
+            {inProgressKhatams} khatam{inProgressKhatams === 1 ? "" : "s"} in progress
+            {" · "}{completedKhatams} completed
+            {campaignGoal > khatams.length ? ` · ${campaignGoal} goal` : ""}
+          </p>
           <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
             <button
               onClick={handleShare}

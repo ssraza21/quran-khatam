@@ -16,6 +16,8 @@ A web app for coordinating community Quran recitation circles (_khatams_). Parti
 
 - Create a khatam with a URL slug and admin PIN
 - 120-slot grid (30 Juz × 4 quarters) with live status updates via Supabase Realtime
+- Public campaign directory with search, goals, and live in-progress/completed counts
+- Bulk campaign setup for creating up to 100 khatam rounds per action
 - Claim up to 8 slots; mark them complete when done
 - Auto-detects khatam completion; admin can start the next one
 - Admin panel: override slot status, reset Juz or full khatam, delete khatam
@@ -40,7 +42,17 @@ npm install
 
 ### 2. Set up the database
 
-Run `supabase/migration.sql` in the Supabase SQL Editor. This creates the schema, tables, indexes, RLS policies, and enables Realtime.
+For a brand-new Supabase project, run the SQL files in this order:
+
+1. `supabase/migration.sql`
+2. `supabase/migration_pin_hash_rls.sql`
+3. Every file in `supabase/migrations/`, oldest first
+
+This creates the schema, tables, indexes, RLS policies, and enables Realtime.
+
+For an existing production project that already has the base schema, do not
+rerun the two base migration files. Run only the previously unapplied files in
+`supabase/migrations/`, oldest first, before deploying the Worker.
 
 ### 3. Configure environment
 
@@ -109,6 +121,7 @@ src/
     lib/              # pin.ts, supabase.ts, validators.ts
 supabase/
   migration.sql       # Full DB schema
+  migrations/         # Incremental schema changes
 ```
 
 ## Security Notes

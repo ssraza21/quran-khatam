@@ -16,6 +16,7 @@ export interface KhatamCreateResult {
   slug: string;
   name: string;
   id: number;
+  campaign_name: string;
 }
 
 export interface KhatamMeta {
@@ -32,11 +33,40 @@ export interface KhatamMeta {
   location_lat?: number | null;
   location_lng?: number | null;
   show_names_on_globe?: boolean;
+  campaign_id?: number | null;
+  campaign_name?: string;
+  campaign_description?: string | null;
+  campaign_searchable?: boolean;
+  campaign_goal?: number;
+  done?: number;
+  total?: number;
+  started?: boolean;
 }
 
 export interface ParticipantInfo {
   name: string;
   claim_limit: number | null;
+}
+
+export interface CampaignSearchResult {
+  slug: string;
+  campaign_name: string;
+  description: string | null;
+  round_name: string;
+  khatam_num: number;
+}
+
+export interface CampaignDirectoryItem {
+  slug: string;
+  campaign_name: string;
+  description: string | null;
+  is_featured: boolean;
+  goal: number;
+  total_khatams: number;
+  in_progress_khatams: number;
+  completed_khatams: number;
+  active_round_name: string;
+  active_round_num: number;
 }
 
 export const api = {
@@ -50,6 +80,9 @@ export const api = {
     location_lat?: number,
     location_lng?: number,
     show_names_on_globe?: boolean,
+    round_name?: string,
+    description?: string,
+    is_searchable?: boolean,
   ) {
     return request<KhatamCreateResult>("/khatams", {
       method: "POST",
@@ -63,8 +96,28 @@ export const api = {
         location_lat,
         location_lng,
         show_names_on_globe,
+        round_name: round_name || undefined,
+        description: description || undefined,
+        is_searchable,
       }),
     });
+  },
+
+  searchKhatams(query: string) {
+    return request<{ results: CampaignSearchResult[] }>(
+      `/khatams/search?q=${encodeURIComponent(query)}`
+    );
+  },
+
+  getCampaignDirectory(query = "", limit = 24, offset = 0) {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    return request<{ campaigns: CampaignDirectoryItem[]; total: number }>(
+      `/campaigns?${params.toString()}`
+    );
   },
 
   getKhatam(slug: string) {
@@ -129,6 +182,50 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pin, limit }),
     });
+  },
+
+  adminUpdateCampaign(
+    slug: string,
+    pin: string,
+    name: string,
+    description: string,
+    isSearchable: boolean,
+  ) {
+    return request<{
+      ok: boolean;
+      campaign_name: string;
+      campaign_description: string | null;
+      campaign_searchable: boolean;
+    }>(`/khatams/${slug}/admin/campaign`, {
+      method: "POST",
+      body: JSON.stringify({
+        pin,
+        name,
+        description,
+        is_searchable: isSearchable,
+      }),
+    });
+  },
+
+  adminAssignAll(slug: string, pin: string, name: string, khatamId?: number) {
+    return request<{ ok: boolean; assigned: number }>(`/khatams/${slug}/admin/assign-all`, {
+      method: "POST",
+      body: JSON.stringify({ pin, name, khatam_id: khatamId }),
+    });
+  },
+
+  adminBulkCreateRounds(slug: string, pin: string, targetTotal: number, namePrefix?: string) {
+    return request<{ ok: boolean; created: number; target_total: number }>(
+      `/khatams/${slug}/admin/bulk-new-khatams`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          pin,
+          target_total: targetTotal,
+          name_prefix: namePrefix || undefined,
+        }),
+      },
+    );
   },
 
   adminGetParticipants(slug: string, pin: string) {

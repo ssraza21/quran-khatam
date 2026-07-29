@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
+import type { CampaignSearchResult } from "@/lib/api";
 import { COUNTRIES } from "@/lib/countries";
 
 function nameToSlug(name: string): string {
@@ -41,6 +42,9 @@ export default function LandingPage() {
 
   // Create form state
   const [cName, setCName] = useState("");
+  const [cRoundName, setCRoundName] = useState("");
+  const [cDescription, setCDescription] = useState("");
+  const [cSearchable, setCSearchable] = useState(true);
   const [cSlug, setCSlug] = useState("");
   const [cSlugEdited, setCSlugEdited] = useState(false);
   const [cPin, setCPin] = useState("");
@@ -58,6 +62,7 @@ export default function LandingPage() {
   const [jSlug, setJSlug] = useState("");
   const [jErr, setJErr] = useState("");
   const [jLoading, setJLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<CampaignSearchResult[]>([]);
 
   const handleNameChange = (val: string) => {
     setCName(val);
@@ -104,6 +109,9 @@ export default function LandingPage() {
         selectedCountry?.lat,
         selectedCountry?.lng,
         isSolo ? undefined : cShowNames,
+        cRoundName.trim() || undefined,
+        cDescription.trim() || undefined,
+        isSolo ? false : cSearchable,
       );
       navigate(`/k/${result.slug}`);
     } catch (err: any) {
@@ -113,28 +121,42 @@ export default function LandingPage() {
     }
   };
 
-  const parseSlugFromInput = (input: string): string => {
+  const parseSlugFromInput = (input: string): string | null => {
     const trimmed = input.trim();
     // Try to extract slug from a URL like /k/my-slug or full URL
     const urlMatch = trimmed.match(/\/k\/([a-z0-9][a-z0-9-]*[a-z0-9])/);
     if (urlMatch) return urlMatch[1];
-    // Otherwise treat as raw slug
-    return trimmed.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    // A plain slug can still be opened directly. Other text becomes a search.
+    return /^[a-z0-9][a-z0-9-]*[a-z0-9]$/i.test(trimmed) ? trimmed.toLowerCase() : null;
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setJErr("");
 
-    const slug = parseSlugFromInput(jSlug);
-    if (!slug) { setJErr("Please enter a valid slug or URL"); return; }
+    const query = jSlug.trim();
+    if (query.length < 2) { setJErr("Enter at least 2 characters"); return; }
 
     setJLoading(true);
     try {
-      await api.getKhatam(slug);
-      navigate(`/k/${slug}`);
+      const slug = parseSlugFromInput(query);
+      if (slug) {
+        try {
+          await api.getKhatam(slug);
+          navigate(`/k/${slug}`);
+          return;
+        } catch {
+          // It may be a campaign name/alias rather than an exact slug.
+        }
+      }
+
+      const { results } = await api.searchKhatams(query);
+      setSearchResults(results);
+      if (results.length === 0) {
+        setJErr("No public campaigns matched. Try the exact slug or ask the organizer for the link.");
+      }
     } catch {
-      setJErr("Khatam not found. Check the slug and try again.");
+      setJErr("Search failed. Please try again.");
     } finally {
       setJLoading(false);
     }
@@ -278,6 +300,37 @@ export default function LandingPage() {
                 </div>
 
                 <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">
+                    First round name <span className="normal-case text-gray-300">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={cRoundName}
+                    onChange={e => setCRoundName(e.target.value)}
+                    placeholder="e.g. DarusSalam students or Smith family"
+                    maxLength={80}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    The campaign title stays fixed; every later round can have a different name.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">
+                    Description or notes <span className="normal-case text-gray-300">(optional)</span>
+                  </label>
+                  <textarea
+                    value={cDescription}
+                    onChange={e => setCDescription(e.target.value)}
+                    placeholder="Add a dedication, deadline, instructions, or other context"
+                    maxLength={500}
+                    rows={3}
+                    className="w-full resize-y px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                  />
+                </div>
+
+                <div>
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">URL Slug</label>
                   <div className="flex items-center gap-0 border border-gray-200 rounded-xl overflow-hidden focus-within:border-[#8B0000] transition-colors">
                     <span className="text-xs text-gray-400 pl-3 shrink-0">/k/</span>
@@ -372,6 +425,23 @@ export default function LandingPage() {
                   </label>
                 )}
 
+                {!isSolo && (
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={cSearchable}
+                      onChange={e => setCSearchable(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 rounded accent-[#8B0000]"
+                    />
+                    <span>
+                      <span className="block text-xs font-medium text-gray-600">Allow people to find this campaign</span>
+                      <span className="block text-[11px] text-gray-400 mt-0.5">
+                        It will appear in name and slug search. The admin PIN is never shown.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
                 {cErr && <p className="text-red-500 text-sm">{cErr}</p>}
 
                 <button
@@ -396,16 +466,16 @@ export default function LandingPage() {
               <h3 className="text-2xl mb-1" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
                 Join a Khatam
               </h3>
-              <p className="text-sm text-gray-400 mb-6">Enter a slug or paste a link to join</p>
+              <p className="text-sm text-gray-400 mb-6">Search by group name or slug, or paste a link</p>
 
               <form onSubmit={handleJoin} className="flex flex-col gap-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Khatam Slug or URL</label>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Campaign, slug, or URL</label>
                   <input
                     type="text"
                     value={jSlug}
-                    onChange={e => { setJSlug(e.target.value); setJErr(""); }}
-                    placeholder="e.g. ramadan-2026-family or paste URL"
+                    onChange={e => { setJSlug(e.target.value); setJErr(""); setSearchResults([]); }}
+                    placeholder="e.g. Qalam, DS, family-ramadan, or paste URL"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
                   />
                 </div>
@@ -417,13 +487,37 @@ export default function LandingPage() {
                   disabled={jLoading}
                   className="bg-white text-[#8B0000] border-2 border-[#8B0000] px-6 py-3 rounded-full text-sm font-semibold hover:bg-[#FFF5F5] transition-colors disabled:opacity-50"
                 >
-                  {jLoading ? "Looking up..." : "Join Khatam"}
+                  {jLoading ? "Searching..." : "Find Khatam"}
                 </button>
               </form>
 
+              {searchResults.length > 0 && (
+                <div className="mt-5 space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Matching campaigns
+                  </p>
+                  {searchResults.map(result => (
+                    <button
+                      key={`${result.slug}-${result.khatam_num}`}
+                      type="button"
+                      onClick={() => navigate(`/k/${result.slug}`)}
+                      className="w-full text-left bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 hover:border-[#8B0000]/30 hover:bg-[#FFF5F5] transition-colors"
+                    >
+                      <span className="block text-sm font-semibold text-gray-800">{result.campaign_name}</span>
+                      {result.description && (
+                        <span className="block text-xs text-gray-500 mt-1 line-clamp-2">{result.description}</span>
+                      )}
+                      <span className="block text-[11px] text-[#8B0000] mt-1.5">
+                        {result.round_name} · /k/{result.slug}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="mt-10 pt-6 border-t border-gray-100">
                 <p className="text-xs text-gray-400 text-center">
-                  Don't have a link? Ask your group organizer for the khatam slug.
+                  Private campaigns will not appear in search. Use their exact slug or ask the organizer for the link.
                 </p>
               </div>
             </div>

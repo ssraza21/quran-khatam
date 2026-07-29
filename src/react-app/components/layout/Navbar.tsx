@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from "react-router-dom";
-import { Menu, Home, Activity, BarChart2, UserPlus, LogIn, Shield } from "lucide-react";
+import { Menu, Home, Activity, BarChart2, UserPlus, LogIn, Shield, LibraryBig } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ export default function Navbar() {
 
   const baseItems: NavLinkItem[] = [
     { name: "Home", path: "/", icon: Home },
+    { name: "Directory", path: "/campaigns", icon: LibraryBig },
     { name: "Create a Khatam", path: "/", hash: "create-khatam", icon: UserPlus },
     { name: "Join a Khatam", path: "/", hash: "join-khatam", icon: LogIn },
   ];

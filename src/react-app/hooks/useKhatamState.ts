@@ -17,8 +17,14 @@ export interface KhatamInfo {
   claim_limit: number;
   show_names_on_globe: boolean;
   location_country: string | null;
+  campaign_id: number | null;
+  campaign_name: string;
+  campaign_description: string | null;
+  campaign_searchable: boolean;
+  campaign_goal: number;
   done: number;
   total: number;
+  started: boolean;
 }
 
 interface DbSlot {
@@ -36,12 +42,15 @@ function dbToSlot(d: DbSlot): Slot {
   return { juz: d.juz, q: d.q, status: d.status, by: d.claimed_by, at: d.claimed_at, done_at: d.done_at };
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function useKhatamState(slug: string) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [khatams, setKhatams] = useState<KhatamInfo[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<number | null>(null);
   const [khatamNum, setKhatamNum] = useState(1);
-  const [khatamName, setKhatamName] = useState("");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [modal, setModal] = useState<{ juz: number; q: number } | null>(null);
@@ -57,33 +66,22 @@ export function useKhatamState(slug: string) {
 
   // Load all khatams with their completion counts
   const loadKhatams = useCallback(async (): Promise<KhatamInfo[]> => {
-    const { data: allKhatams, error } = await supabasePublic
-      .from("khatams")
-      .select("*")
-      .eq("slug", slug)
-      .order("khatam_num", { ascending: false });
+    let allKhatams;
+    try {
+      allKhatams = await api.getHistory(slug);
+    } catch {
+      setNotFound(true);
+      return [];
+    }
 
-    if (error || !allKhatams || allKhatams.length === 0) {
+    if (allKhatams.length === 0) {
       setNotFound(true);
       return [];
     }
 
     setNotFound(false);
 
-    const khatamInfos: KhatamInfo[] = [];
-    for (const k of allKhatams) {
-      const { count } = await supabasePublic
-        .from("slots")
-        .select("*", { count: "exact", head: true })
-        .eq("khatam_id", k.id)
-        .eq("status", "dn");
-
-      const { count: totalCount } = await supabasePublic
-        .from("slots")
-        .select("*", { count: "exact", head: true })
-        .eq("khatam_id", k.id);
-
-      khatamInfos.push({
+    const khatamInfos: KhatamInfo[] = allKhatams.map(k => ({
         id: k.id,
         slug: k.slug,
         khatam_num: k.khatam_num,
@@ -94,15 +92,17 @@ export function useKhatamState(slug: string) {
         claim_limit: k.claim_limit ?? 8,
         show_names_on_globe: k.show_names_on_globe ?? true,
         location_country: k.location_country ?? null,
-        done: count ?? 0,
-        total: totalCount ?? 120,
-      });
-    }
+        campaign_id: k.campaign_id ?? null,
+        campaign_name: k.campaign_name ?? k.name ?? "Khatam",
+        campaign_description: k.campaign_description ?? null,
+        campaign_searchable: k.campaign_searchable ?? false,
+        campaign_goal: k.campaign_goal ?? allKhatams.length,
+        done: k.done ?? 0,
+        total: k.total ?? 120,
+        started: k.started ?? (k.done ?? 0) > 0,
+      }));
 
     setKhatams(khatamInfos);
-    if (khatamInfos.length > 0) {
-      setKhatamName(khatamInfos[0].name ?? "");
-    }
     return khatamInfos;
   }, [slug]);
 
@@ -511,6 +511,65 @@ export function useKhatamState(slug: string) {
     await loadKhatams();
   };
 
+  const adminUpdateCampaign = async (
+    name: string,
+    description: string,
+    isSearchable: boolean,
+  ) => {
+    if (!adminMode) return;
+    try {
+      await api.adminUpdateCampaign(slug, adminPin, name, description, isSearchable);
+      toast.success("Campaign details updated");
+      await loadKhatams();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update campaign details"));
+    }
+  };
+
+  const adminAssignEntireQuran = async (name: string) => {
+    if (!adminMode || !selectedKhatamId) return;
+    const confirmed = window.confirm(
+      `Assign all 30 Juz (120 quarters) to "${name}"? This is only allowed while every portion is available.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.adminAssignAll(slug, adminPin, name, selectedKhatamId);
+      toast.success(`All 30 Juz assigned to ${name}`);
+      await loadSlots(selectedKhatamId);
+      await loadKhatams();
+      await loadParticipants();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to assign the entire Quran"));
+    }
+  };
+
+  const adminBulkCreateRounds = async (targetTotal: number, namePrefix: string) => {
+    if (!adminMode) return;
+    try {
+      const result = await api.adminBulkCreateRounds(
+        slug,
+        adminPin,
+        targetTotal,
+        namePrefix.trim() || undefined,
+      );
+      toast.success(
+        result.created > 0
+          ? `${result.created} new khatam${result.created === 1 ? "" : "s"} created`
+          : "Campaign already has that many khatams"
+      );
+
+      const infos = await loadKhatams();
+      if (infos.length > 0) {
+        setSelectedKhatamId(infos[0].id);
+        setKhatamNum(infos[0].khatam_num);
+        await loadSlots(infos[0].id);
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to create campaign rounds"));
+    }
+  };
+
   const adminAddParticipant = async (name: string) => {
     if (!adminMode || !name.trim()) return;
     try {
@@ -634,9 +693,21 @@ export function useKhatamState(slug: string) {
   };
 
   const selectedKhatamInfo = khatams.find(k => k.id === selectedKhatamId);
+  const fallbackKhatamInfo = khatams[0];
+  const khatamName = selectedKhatamInfo?.name ?? fallbackKhatamInfo?.name ?? "";
+  const campaignName =
+    selectedKhatamInfo?.campaign_name ?? fallbackKhatamInfo?.campaign_name ?? khatamName;
+  const campaignDescription =
+    selectedKhatamInfo?.campaign_description ?? fallbackKhatamInfo?.campaign_description ?? null;
+  const campaignSearchable =
+    selectedKhatamInfo?.campaign_searchable ?? fallbackKhatamInfo?.campaign_searchable ?? false;
+  const campaignGoal =
+    selectedKhatamInfo?.campaign_goal ?? fallbackKhatamInfo?.campaign_goal ?? khatams.length;
 
   return {
-    slug, slots, khatamNum, khatamName, khatams, selectedKhatamId, isLatestKhatam,
+    slug, slots, khatamNum, khatamName, campaignName, campaignDescription, campaignSearchable,
+    campaignGoal,
+    khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
     claimLimit,
@@ -655,7 +726,7 @@ export function useKhatamState(slug: string) {
     tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
-    adminSaveClaimLimit,
+    adminSaveClaimLimit, adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     loadParticipants,
   };

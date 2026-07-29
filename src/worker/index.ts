@@ -24,6 +24,75 @@ async function getLatestKhatam(db: ReturnType<typeof createServiceClient>, slug:
   return data;
 }
 
+type CampaignRow = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_searchable: boolean;
+  is_featured?: boolean;
+  goal: number;
+};
+
+type CampaignDirectoryRow = {
+  slug: string;
+  campaign_name: string;
+  description: string | null;
+  is_featured: boolean;
+  goal: number;
+  total_khatams: number;
+  in_progress_khatams: number;
+  completed_khatams: number;
+  active_round_name: string;
+  active_round_num: number;
+  total_matching: number;
+};
+
+type KhatamHistoryRow = {
+  id: number;
+  slug: string;
+  name: string | null;
+  khatam_num: number;
+  created_at: string;
+  completed_at: string | null;
+  is_solo: boolean;
+  claim_limit: number;
+  location_city: string | null;
+  location_country: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  show_names_on_globe: boolean;
+  campaign_id: number | null;
+  done: number;
+  total: number;
+  started: boolean;
+};
+
+async function getCampaignForKhatam(
+  db: ReturnType<typeof createServiceClient>,
+  khatam: { campaign_id?: number | null; slug: string },
+): Promise<CampaignRow | null> {
+  const query = db
+    .from("campaigns")
+    .select("id, slug, name, description, is_searchable, is_featured, goal");
+
+  const { data } = khatam.campaign_id
+    ? await query.eq("id", khatam.campaign_id).maybeSingle()
+    : await query.eq("slug", khatam.slug).maybeSingle();
+
+  return (data as CampaignRow | null) ?? null;
+}
+
+function withCampaign<T extends Record<string, unknown>>(khatam: T, campaign: CampaignRow | null) {
+  return {
+    ...khatam,
+    campaign_name: campaign?.name ?? khatam.name ?? "Khatam",
+    campaign_description: campaign?.description ?? null,
+    campaign_searchable: campaign?.is_searchable ?? false,
+    campaign_goal: campaign?.goal ?? 1,
+  };
+}
+
 // Fast path: resolve khatam by known ID (PK lookup) with slug verification, or fall back to slug scan
 async function resolveKhatam(
   db: ReturnType<typeof createServiceClient>,
@@ -138,11 +207,56 @@ app.get("/api/globe", async (c) => {
   });
 });
 
+// GET /api/campaigns — Searchable public directory with aggregate round counts
+app.get("/api/campaigns", async (c) => {
+  const db = createServiceClient(c.env);
+  const rawQuery = (c.req.query("q") ?? "").trim().slice(0, 80);
+  const query = rawQuery.replace(/[^\p{L}\p{N} -]/gu, "").trim();
+  const requestedLimit = Number(c.req.query("limit") ?? 24);
+  const requestedOffset = Number(c.req.query("offset") ?? 0);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 48)
+    : 24;
+  const offset = Number.isFinite(requestedOffset)
+    ? Math.max(Math.trunc(requestedOffset), 0)
+    : 0;
+
+  const { data, error } = await db.rpc("campaign_directory", {
+    p_query: query.length >= 2 ? query : "",
+    p_limit: limit,
+    p_offset: offset,
+  });
+
+  if (error) return c.json({ error: "Failed to load campaign directory" }, 500);
+
+  const rows = (data ?? []) as CampaignDirectoryRow[];
+  const campaigns = rows.map(campaign => ({
+    slug: campaign.slug,
+    campaign_name: campaign.campaign_name,
+    description: campaign.description,
+    is_featured: campaign.is_featured,
+    goal: Number(campaign.goal),
+    total_khatams: Number(campaign.total_khatams),
+    in_progress_khatams: Number(campaign.in_progress_khatams),
+    completed_khatams: Number(campaign.completed_khatams),
+    active_round_name: campaign.active_round_name,
+    active_round_num: Number(campaign.active_round_num),
+  }));
+
+  return c.json({
+    campaigns,
+    total: rows.length > 0 ? Number(rows[0].total_matching) : 0,
+  });
+});
+
 // POST /api/khatams — Create a new khatam
 app.post("/api/khatams", async (c) => {
   const db = createServiceClient(c.env);
   const body = await c.req.json<{
     name: string;
+    round_name?: string;
+    description?: string;
+    is_searchable?: boolean;
     slug: string;
     pin?: string;
     is_solo?: boolean;
@@ -152,10 +266,24 @@ app.post("/api/khatams", async (c) => {
     location_lng?: number;
     show_names_on_globe?: boolean;
   }>();
-  const { name, is_solo = false, location_city, location_country, location_lat, location_lng, show_names_on_globe } = body;
+  const {
+    name,
+    round_name,
+    description,
+    is_searchable,
+    is_solo = false,
+    location_city,
+    location_country,
+    location_lat,
+    location_lng,
+    show_names_on_globe,
+  } = body;
   let { slug } = body;
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  if (name.trim().length > 80) return c.json({ error: "Campaign name is too long" }, 400);
+  if (round_name && round_name.trim().length > 80) return c.json({ error: "Round name is too long" }, 400);
+  if (description && description.trim().length > 500) return c.json({ error: "Description is too long" }, 400);
 
   let pinToHash: string;
 
@@ -175,17 +303,33 @@ app.post("/api/khatams", async (c) => {
   if (!isValidSlug(slug)) return c.json({ error: "Invalid slug" }, 400);
 
   // Check slug uniqueness
-  const { data: existing } = await db
-    .from("khatams")
-    .select("id")
-    .eq("slug", slug)
-    .limit(1);
+  const [{ data: existing }, { data: existingCampaign }] = await Promise.all([
+    db.from("khatams").select("id").eq("slug", slug).limit(1),
+    db.from("campaigns").select("id").eq("slug", slug).limit(1),
+  ]);
 
-  if (existing && existing.length > 0) {
+  if ((existing && existing.length > 0) || (existingCampaign && existingCampaign.length > 0)) {
     return c.json({ error: "This slug is already taken" }, 409);
   }
 
   const pinHash = await hashPin(pinToHash);
+  const campaignName = name.trim();
+  const roundName = round_name?.trim() || campaignName;
+
+  const { data: campaign, error: campaignErr } = await db
+    .from("campaigns")
+    .insert({
+      slug,
+      name: campaignName,
+      description: description?.trim() || "",
+      is_featured: false,
+      goal: 1,
+      is_searchable: !is_solo && (is_searchable ?? true),
+    })
+    .select("id, slug, name, description, is_searchable, is_featured, goal")
+    .single();
+
+  if (campaignErr || !campaign) return c.json({ error: "Failed to create campaign" }, 500);
 
   const locationFields = location_lat != null && location_lng != null
     ? {
@@ -199,11 +343,22 @@ app.post("/api/khatams", async (c) => {
 
   const { data: khatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: name.trim(), pin_hash: pinHash, khatam_num: 1, is_solo, ...locationFields })
+    .insert({
+      slug,
+      name: roundName,
+      pin_hash: pinHash,
+      khatam_num: 1,
+      is_solo,
+      campaign_id: campaign.id,
+      ...locationFields,
+    })
     .select("id, slug, name, khatam_num, created_at, is_solo")
     .single();
 
-  if (kErr || !khatam) return c.json({ error: "Failed to create khatam" }, 500);
+  if (kErr || !khatam) {
+    await db.from("campaigns").delete().eq("id", campaign.id);
+    return c.json({ error: "Failed to create khatam" }, 500);
+  }
 
   // Create 120 slots
   const slots = Array.from({ length: 120 }, (_, i) => ({
@@ -213,9 +368,46 @@ app.post("/api/khatams", async (c) => {
   }));
 
   const { error: sErr } = await db.from("slots").insert(slots);
-  if (sErr) return c.json({ error: "Failed to create slots" }, 500);
+  if (sErr) {
+    await db.from("khatams").delete().eq("id", khatam.id);
+    await db.from("campaigns").delete().eq("id", campaign.id);
+    return c.json({ error: "Failed to create slots" }, 500);
+  }
 
-  return c.json({ slug: khatam.slug, name: khatam.name, id: khatam.id }, 201);
+  return c.json({
+    slug: khatam.slug,
+    name: khatam.name,
+    id: khatam.id,
+    campaign_name: campaign.name,
+  }, 201);
+});
+
+// GET /api/khatams/search?q=... — Find opted-in community campaigns by name or slug
+app.get("/api/khatams/search", async (c) => {
+  const db = createServiceClient(c.env);
+  const query = (c.req.query("q") ?? "").trim().slice(0, 80);
+  if (query.length < 2) return c.json({ results: [] });
+
+  const sanitizedQuery = query.replace(/[^\p{L}\p{N} -]/gu, "").trim();
+  if (sanitizedQuery.length < 2) return c.json({ results: [] });
+
+  const { data, error } = await db.rpc("campaign_directory", {
+    p_query: sanitizedQuery,
+    p_limit: 8,
+    p_offset: 0,
+  });
+
+  if (error) return c.json({ error: "Failed to search campaigns" }, 500);
+
+  const results = ((data ?? []) as CampaignDirectoryRow[]).map(campaign => ({
+    slug: campaign.slug,
+    campaign_name: campaign.campaign_name,
+    description: campaign.description,
+    round_name: campaign.active_round_name,
+    khatam_num: Number(campaign.active_round_num),
+  }));
+
+  return c.json({ results });
 });
 
 // GET /api/khatams/:slug — Get latest khatam metadata
@@ -226,8 +418,9 @@ app.get("/api/khatams/:slug", async (c) => {
   const khatam = await getLatestKhatam(db, slug);
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
-  const { pin_hash: _, ...safe } = khatam;
-  return c.json(safe);
+  const campaign = await getCampaignForKhatam(db, khatam);
+  const safe = { ...khatam, pin_hash: undefined };
+  return c.json(withCampaign(safe, campaign));
 });
 
 // GET /api/khatams/:slug/history — All khatams for this slug
@@ -235,14 +428,18 @@ app.get("/api/khatams/:slug/history", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
 
-  const { data, error } = await db
-    .from("khatams")
-    .select("id, slug, name, khatam_num, created_at, completed_at, is_solo")
-    .eq("slug", slug)
-    .order("khatam_num", { ascending: false });
+  const { data, error } = await db.rpc("khatam_history", { p_slug: slug });
 
   if (error) return c.json({ error: "Failed to fetch history" }, 500);
-  return c.json(data ?? []);
+  const history = (data ?? []) as KhatamHistoryRow[];
+  if (history.length === 0) return c.json([]);
+
+  const campaign = await getCampaignForKhatam(db, history[0]);
+  return c.json(history.map(khatam => ({
+    ...withCampaign(khatam, campaign),
+    done: Number(khatam.done),
+    total: Number(khatam.total),
+  })));
 });
 
 // POST /api/khatams/:slug/verify-pin
@@ -526,7 +723,19 @@ app.post("/api/khatams/:slug/solo/new-khatam", async (c) => {
 
   const { data: newKhatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: khatamName, pin_hash: khatam.pin_hash, khatam_num: newNum, is_solo: true })
+    .insert({
+      slug,
+      name: khatamName,
+      pin_hash: khatam.pin_hash,
+      khatam_num: newNum,
+      is_solo: true,
+      campaign_id: khatam.campaign_id,
+      location_city: khatam.location_city,
+      location_country: khatam.location_country,
+      location_lat: khatam.location_lat,
+      location_lng: khatam.location_lng,
+      show_names_on_globe: khatam.show_names_on_globe,
+    })
     .select("id, slug, name, khatam_num, created_at, is_solo")
     .single();
 
@@ -553,10 +762,11 @@ app.delete("/api/khatams/:slug/solo/delete", async (c) => {
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (!khatam.is_solo) return c.json({ error: "Not a solo khatam" }, 403);
 
-  await db.from("slots").delete().eq("khatam_id", khatam.id);
-  const { error } = await db.from("khatams").delete().eq("id", khatam.id);
+  const { data: deleted, error } = await db.rpc("delete_khatam_round", {
+    p_khatam_id: khatam.id,
+  });
 
-  if (error) return c.json({ error: "Failed to delete" }, 500);
+  if (error || !deleted) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });
 });
@@ -657,6 +867,151 @@ app.post("/api/khatams/:slug/admin/set-claim-limit", async (c) => {
   if (error) return c.json({ error: "Failed to update claim limit" }, 500);
 
   return c.json({ ok: true, claim_limit: limit });
+});
+
+// POST /api/khatams/:slug/admin/campaign — Update stable campaign details
+app.post("/api/khatams/:slug/admin/campaign", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name, description, is_searchable } = await c.req.json<{
+    pin: string;
+    name: string;
+    description?: string;
+    is_searchable?: boolean;
+  }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  if (!name?.trim()) return c.json({ error: "Campaign name is required" }, 400);
+  if (name.trim().length > 80) return c.json({ error: "Campaign name is too long" }, 400);
+  if (description && description.trim().length > 500) {
+    return c.json({ error: "Description is too long" }, 400);
+  }
+
+  let campaign = await getCampaignForKhatam(db, khatam);
+
+  if (!campaign) {
+    const { data, error } = await db
+      .from("campaigns")
+      .insert({
+        slug,
+        name: name.trim(),
+        description: description?.trim() || "",
+        is_featured: false,
+        goal: 1,
+        is_searchable: is_searchable ?? false,
+      })
+      .select("id, slug, name, description, is_searchable, is_featured, goal")
+      .single();
+
+    if (error || !data) return c.json({ error: "Failed to create campaign details" }, 500);
+    campaign = data as CampaignRow;
+    await db.from("khatams").update({ campaign_id: campaign.id }).eq("slug", slug);
+  } else {
+    const { data, error } = await db
+      .from("campaigns")
+      .update({
+        name: name.trim(),
+        description: description?.trim() || "",
+        is_searchable: is_searchable ?? campaign.is_searchable,
+      })
+      .eq("id", campaign.id)
+      .select("id, slug, name, description, is_searchable, is_featured, goal")
+      .single();
+
+    if (error || !data) return c.json({ error: "Failed to update campaign details" }, 500);
+    campaign = data as CampaignRow;
+  }
+
+  return c.json({
+    ok: true,
+    campaign_name: campaign.name,
+    campaign_description: campaign.description,
+    campaign_searchable: campaign.is_searchable,
+  });
+});
+
+// POST /api/khatams/:slug/admin/bulk-new-khatams — Fill campaign up to a target
+app.post("/api/khatams/:slug/admin/bulk-new-khatams", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, target_total, name_prefix } = await c.req.json<{
+    pin: string;
+    target_total: number;
+    name_prefix?: string;
+  }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  if (!Number.isInteger(target_total) || target_total < 1 || target_total > 5000) {
+    return c.json({ error: "Campaign target must be between 1 and 5000" }, 400);
+  }
+  if (name_prefix && name_prefix.trim().length > 60) {
+    return c.json({ error: "Round name prefix is too long" }, 400);
+  }
+
+  const { data: created, error } = await db.rpc("create_khatam_rounds", {
+    p_source_khatam_id: khatam.id,
+    p_target_total: target_total,
+    p_name_prefix: name_prefix?.trim() ?? "",
+  });
+
+  if (error) {
+    if (
+      error.message.includes("lower than the current") ||
+      error.message.includes("between 1 and 5000")
+    ) {
+      return c.json({ error: error.message }, 400);
+    }
+    return c.json({ error: "Failed to create campaign rounds" }, 500);
+  }
+
+  return c.json({
+    ok: true,
+    created: Number(created),
+    target_total,
+  }, Number(created) > 0 ? 201 : 200);
+});
+
+// POST /api/khatams/:slug/admin/assign-all — Assign all 30 Juz to one person/group
+app.post("/api/khatams/:slug/admin/assign-all", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name, khatam_id } = await c.req.json<{
+    pin: string;
+    name: string;
+    khatam_id?: number;
+  }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  if (!name?.trim()) return c.json({ error: "A person or group name is required" }, 400);
+  if (name.trim().length > 60) return c.json({ error: "Name is too long" }, 400);
+
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Not available for personal khatams" }, 400);
+
+  const { data: assigned, error } = await db.rpc("assign_entire_khatam", {
+    p_khatam_id: khatam.id,
+    p_claimed_by: name.trim(),
+  });
+
+  if (error) {
+    if (error.message.includes("All 30 Juz must be available")) {
+      return c.json({ error: "All 30 Juz must be available before assigning the entire Quran." }, 409);
+    }
+    return c.json({ error: "Failed to assign the Quran" }, 500);
+  }
+
+  await db
+    .from("khatam_participants")
+    .upsert(
+      { slug, name: name.trim() },
+      { onConflict: "slug,name", ignoreDuplicates: true },
+    );
+
+  return c.json({ ok: true, assigned: Number(assigned) });
 });
 
 // GET /api/khatams/:slug/admin/participants — List participant names for a slug
@@ -794,6 +1149,8 @@ app.post("/api/khatams/:slug/admin/reset-juz", async (c) => {
 
   if (error) return c.json({ error: "Failed to reset juz" }, 500);
 
+  await checkCompletion(db, khatam.id);
+
   return c.json({ ok: true });
 });
 
@@ -811,7 +1168,20 @@ app.post("/api/khatams/:slug/admin/new-khatam", async (c) => {
 
   const { data: newKhatam, error: kErr } = await db
     .from("khatams")
-    .insert({ slug, name: khatamName, pin_hash: khatam.pin_hash, khatam_num: newNum })
+    .insert({
+      slug,
+      name: khatamName,
+      pin_hash: khatam.pin_hash,
+      khatam_num: newNum,
+      campaign_id: khatam.campaign_id,
+      is_solo: false,
+      claim_limit: khatam.claim_limit,
+      location_city: khatam.location_city,
+      location_country: khatam.location_country,
+      location_lat: khatam.location_lat,
+      location_lng: khatam.location_lng,
+      show_names_on_globe: khatam.show_names_on_globe,
+    })
     .select("id, slug, name, khatam_num, created_at")
     .single();
 
@@ -838,11 +1208,11 @@ app.delete("/api/khatams/:slug/admin/delete", async (c) => {
   const { valid, khatam } = await verifyAdmin(db, slug, pin);
   if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
 
-  // Delete slots first (cascade should handle this, but be explicit)
-  await db.from("slots").delete().eq("khatam_id", khatam.id);
-  const { error } = await db.from("khatams").delete().eq("id", khatam.id);
+  const { data: deleted, error } = await db.rpc("delete_khatam_round", {
+    p_khatam_id: khatam.id,
+  });
 
-  if (error) return c.json({ error: "Failed to delete" }, 500);
+  if (error || !deleted) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });
 });
@@ -875,9 +1245,10 @@ async function checkCompletion(db: ReturnType<typeof createServiceClient>, khata
     .eq("khatam_id", khatamId)
     .eq("status", "dn");
 
-  if (count === 120) {
-    await db.from("khatams").update({ completed_at: new Date().toISOString() }).eq("id", khatamId);
-  }
+  await db
+    .from("khatams")
+    .update({ completed_at: count === 120 ? new Date().toISOString() : null })
+    .eq("id", khatamId);
 }
 
 export default app;

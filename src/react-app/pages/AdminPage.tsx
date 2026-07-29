@@ -17,7 +17,8 @@ export default function AdminPage() {
 
   const state = useKhatamState(slug ?? "");
   const {
-    khatamName, slots, khatamNum, khatams, selectedKhatamId,
+    khatamName, campaignName, campaignDescription, campaignSearchable, campaignGoal,
+    slots, khatamNum, khatams, selectedKhatamId,
     loading, notFound, isSolo,
     claimLimit, showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
@@ -31,6 +32,7 @@ export default function AdminPage() {
     adminSetStatus, adminAssignJuz,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames, adminSaveClaimLimit,
+    adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     startNewKhatam,
   } = state;
@@ -91,10 +93,10 @@ export default function AdminPage() {
                   className="text-2xl sm:text-3xl font-normal text-white"
                   style={{ fontFamily: "'Playfair Display', serif" }}
                 >
-                  {khatamName || "Khatam"}
+                  {campaignName || khatamName || "Khatam"}
                 </h1>
                 <p className="text-sm text-white/60 mt-0.5">
-                  Khatam #{khatamNum} · {pct}% complete
+                  Round {khatamNum}{khatamName ? ` · ${khatamName}` : ""} · {pct}% complete
                 </p>
               </div>
             </div>
@@ -263,12 +265,21 @@ export default function AdminPage() {
                   setClaimLimitInput={setClaimLimitInput}
                   newKhatamName={newKhatamName}
                   setNewKhatamName={setNewKhatamName}
+                  campaignName={campaignName}
+                  campaignDescription={campaignDescription}
+                  campaignSearchable={campaignSearchable}
+                  campaignGoal={campaignGoal}
+                  currentKhatamCount={khatams.length}
+                  canAssignEntireQuran={rem === 120}
                   locationCountry={locationCountry}
                   showNamesOnGlobe={showNamesOnGlobe}
                   onAddParticipant={adminAddParticipant}
                   onRemoveParticipant={adminRemoveParticipant}
                   onSetParticipantLimit={adminSetParticipantLimit}
                   onSaveClaimLimit={adminSaveClaimLimit}
+                  onSaveCampaign={adminUpdateCampaign}
+                  onAssignEntireQuran={adminAssignEntireQuran}
+                  onBulkCreateRounds={adminBulkCreateRounds}
                   onStartNewKhatam={startNewKhatam}
                   onToggleGlobeNames={adminToggleGlobeNames}
                   onResetAll={adminResetAllToAvailable}
