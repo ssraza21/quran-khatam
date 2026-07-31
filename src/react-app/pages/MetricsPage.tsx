@@ -252,7 +252,7 @@ export default function MetricsPage() {
 
           <div className="mt-3">
             <Link
-              to={`/k/${slug}`}
+              to={`/k/${slug}/tracker`}
               className="text-white/60 text-sm no-underline hover:text-white/80 transition-colors"
             >
               &larr; Back to Tracker
@@ -271,7 +271,6 @@ export default function MetricsPage() {
               <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium shrink-0 mr-1">Khatam</span>
               {khatams.map(k => {
                 const isSelected = k.id === selectedKhatamId;
-                const isLatest = k.id === latestKhatamId;
                 return (
                   <button
                     key={k.id}
@@ -283,12 +282,6 @@ export default function MetricsPage() {
                     }
                   >
                     {k.name ?? `#${k.khatam_num}`}
-                    {isLatest && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{ background: isSelected ? "rgba(255,255,255,0.7)" : "#4CAF50" }}
-                      />
-                    )}
                   </button>
                 );
               })}

@@ -1,4 +1,5 @@
 export type StatusKey = "av" | "cl" | "dn";
+export type ParticipationMode = "open" | "group";
 
 export interface Slot {
   juz: number;
@@ -37,6 +38,7 @@ export interface KhatamPublic {
   campaign_description?: string | null;
   campaign_searchable?: boolean;
   campaign_goal?: number;
+  participation_mode?: ParticipationMode;
 }
 
 export interface GlobeMarker {

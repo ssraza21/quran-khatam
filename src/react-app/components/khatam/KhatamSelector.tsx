@@ -1,4 +1,5 @@
-import { useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search } from "lucide-react";
 import type { KhatamInfo } from "@/hooks/useKhatamState";
 
 interface KhatamSelectorProps {
@@ -10,6 +11,23 @@ interface KhatamSelectorProps {
 export default function KhatamSelector({ khatams, selectedId, onSelect }: KhatamSelectorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const [query, setQuery] = useState("");
+
+  const visibleKhatams = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...khatams]
+      .filter(khatam => !normalizedQuery
+        || (khatam.name ?? `Khatam ${khatam.khatam_num}`).toLowerCase().includes(normalizedQuery)
+        || String(khatam.khatam_num).includes(normalizedQuery))
+      .sort((a, b) => {
+        const priority = (khatam: KhatamInfo) => {
+          if (khatam.started && khatam.done < khatam.total) return 0;
+          if (khatam.done < khatam.total) return 1;
+          return 2;
+        };
+        return priority(a) - priority(b) || a.khatam_num - b.khatam_num;
+      });
+  }, [khatams, query]);
 
   // Scroll active khatam into view on mount
   useEffect(() => {
@@ -26,10 +44,9 @@ export default function KhatamSelector({ khatams, selectedId, onSelect }: Khatam
   return (
     <div className="bg-[#faf8f6] border-b border-gray-200/80">
       <div className="max-w-[1200px] mx-auto px-4 py-3">
-        {/* Label */}
-        <div className="flex items-center gap-2 mb-2.5 px-1">
+        <div className="flex flex-wrap items-center gap-2 mb-2.5 px-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">
-            Khatam History
+            Campaign khatams
           </span>
           <div className="flex-1 h-px bg-gray-200/80" />
           <span className="text-[10px] text-gray-400 font-medium tabular-nums">
@@ -37,17 +54,28 @@ export default function KhatamSelector({ khatams, selectedId, onSelect }: Khatam
           </span>
         </div>
 
+        {khatams.length > 6 && (
+          <label className="mb-3 flex max-w-sm items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-[#8B0000]/50">
+            <Search size={14} className="shrink-0 text-gray-400" />
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search Khatam name"
+              className="min-w-0 flex-1 border-0 bg-transparent py-2 text-xs text-gray-700 outline-none"
+            />
+          </label>
+        )}
+
         {/* Scrollable row */}
         <div
           ref={scrollRef}
           className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {[...khatams].reverse().map(k => {
+          {visibleKhatams.map(k => {
             const isSelected = k.id === selectedId;
             const isComplete = k.done === k.total;
             const pct = k.total > 0 ? Math.round((k.done / k.total) * 100) : 0;
-            const isLatest = k.id === khatams[0]?.id;
 
             return (
               <button
@@ -88,16 +116,6 @@ export default function KhatamSelector({ khatams, selectedId, onSelect }: Khatam
                       <span className={`text-[13px] font-semibold leading-tight ${isSelected ? "text-white" : ""}`}>
                         {k.name ?? `Khatam ${k.khatam_num}`}
                       </span>
-                      {isLatest && !isSelected && (
-                        <span className="text-[8px] font-bold uppercase tracking-wider bg-[#8B0000]/10 text-[#8B0000] px-1.5 py-0.5 rounded-full">
-                          Latest
-                        </span>
-                      )}
-                      {isLatest && isSelected && (
-                        <span className="text-[8px] font-bold uppercase tracking-wider bg-white/20 text-white px-1.5 py-0.5 rounded-full">
-                          Latest
-                        </span>
-                      )}
                     </div>
 
                     {/* Mini progress bar */}
@@ -127,6 +145,9 @@ export default function KhatamSelector({ khatams, selectedId, onSelect }: Khatam
               </button>
             );
           })}
+          {visibleKhatams.length === 0 && (
+            <p className="px-1 py-3 text-xs text-gray-400">No Khatam matches “{query.trim()}”.</p>
+          )}
         </div>
       </div>
 

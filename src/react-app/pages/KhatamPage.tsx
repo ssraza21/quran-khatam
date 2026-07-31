@@ -185,10 +185,10 @@ export default function KhatamPage() {
             )}
             {!isSolo && (
               <Link
-                to={`/k/${slug}/metrics`}
+                to={`/k/${slug}`}
                 className="bg-white/10 border border-white/25 text-white px-4 py-1.5 rounded-full text-xs font-medium no-underline hover:bg-white/20 transition-colors"
               >
-                View Metrics
+                Campaign Overview
               </Link>
             )}
           </div>

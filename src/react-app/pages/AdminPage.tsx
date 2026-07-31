@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import {
-  Shield, Lock, ArrowLeft, LayoutGrid, Settings, CheckCircle2, Clock, Circle,
+  Shield, Lock, ArrowLeft, LayoutGrid, Settings, CheckCircle2, Clock, Circle, Building2,
 } from "lucide-react";
 import { useKhatamState } from "@/hooks/useKhatamState";
 import KhatamSelector from "@/components/khatam/KhatamSelector";
@@ -9,7 +9,7 @@ import JuzRow from "@/components/khatam/JuzRow";
 import AdminSlotDrawer from "@/components/khatam/AdminSlotDrawer";
 import AdminSettingsPanel from "@/components/khatam/AdminSettingsPanel";
 
-type AdminTab = "slots" | "settings";
+type AdminTab = "slots" | "khatam" | "campaign";
 
 export default function AdminPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -18,6 +18,7 @@ export default function AdminPage() {
   const state = useKhatamState(slug ?? "");
   const {
     khatamName, campaignName, campaignDescription, campaignSearchable, campaignGoal,
+    participationMode,
     slots, khatamNum, khatams, selectedKhatamId,
     loading, notFound, isSolo,
     claimLimit, showNamesOnGlobe, locationCountry,
@@ -33,6 +34,7 @@ export default function AdminPage() {
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames, adminSaveClaimLimit,
     adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
+    adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminRecordCompletedKhatam,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     startNewKhatam,
   } = state;
@@ -53,7 +55,7 @@ export default function AdminPage() {
   }
 
   if (!loading && isSolo) {
-    return <Navigate to={`/k/${slug}`} replace />;
+    return <Navigate to={`/k/${slug}/tracker`} replace />;
   }
 
   if (loading && slots.length === 0) {
@@ -73,7 +75,7 @@ export default function AdminPage() {
       >
         <div className="max-w-[1200px] mx-auto">
           <Link
-            to={`/k/${slug}`}
+            to={`/k/${slug}/tracker`}
             className="inline-flex items-center gap-1.5 text-white/70 hover:text-white text-sm mb-4 transition-colors no-underline"
           >
             <ArrowLeft size={14} />
@@ -216,15 +218,27 @@ export default function AdminPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setTab("settings")}
+                onClick={() => setTab("khatam")}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  tab === "settings"
+                  tab === "khatam"
                     ? "bg-[#8B0000] text-white shadow-sm"
                     : "bg-white border border-gray-200 text-gray-600 hover:border-[#8B0000]/30"
                 }`}
               >
                 <Settings size={15} />
-                Settings
+                This Khatam
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("campaign")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  tab === "campaign"
+                    ? "bg-[#8B0000] text-white shadow-sm"
+                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#8B0000]/30"
+                }`}
+              >
+                <Building2 size={15} />
+                Campaign
               </button>
             </div>
           </div>
@@ -257,8 +271,9 @@ export default function AdminPage() {
                 </div>
               </div>
             ) : (
-              <div className="max-w-lg">
+              <div className="max-w-2xl">
                 <AdminSettingsPanel
+                  scope={tab}
                   participants={participants}
                   claimLimit={claimLimit}
                   claimLimitInput={claimLimitInput}
@@ -270,6 +285,8 @@ export default function AdminPage() {
                   campaignSearchable={campaignSearchable}
                   campaignGoal={campaignGoal}
                   currentKhatamCount={khatams.length}
+                  currentKhatamName={khatamName}
+                  participationMode={participationMode}
                   canAssignEntireQuran={rem === 120}
                   locationCountry={locationCountry}
                   showNamesOnGlobe={showNamesOnGlobe}
@@ -280,6 +297,10 @@ export default function AdminPage() {
                   onSaveCampaign={adminUpdateCampaign}
                   onAssignEntireQuran={adminAssignEntireQuran}
                   onBulkCreateRounds={adminBulkCreateRounds}
+                  onRenameKhatam={adminRenameKhatam}
+                  onSetParticipationMode={adminSetParticipationMode}
+                  onDuplicateKhatam={adminDuplicateKhatam}
+                  onRecordCompletedKhatam={adminRecordCompletedKhatam}
                   onStartNewKhatam={startNewKhatam}
                   onToggleGlobeNames={adminToggleGlobeNames}
                   onResetAll={adminResetAllToAvailable}

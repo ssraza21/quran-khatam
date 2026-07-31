@@ -1,4 +1,4 @@
-import type { GlobeData } from "@/lib/types";
+import type { GlobeData, ParticipationMode } from "@/lib/types";
 
 const BASE = "/api";
 
@@ -41,6 +41,7 @@ export interface KhatamMeta {
   done?: number;
   total?: number;
   started?: boolean;
+  participation_mode?: ParticipationMode;
 }
 
 export interface ParticipantInfo {
@@ -163,24 +164,24 @@ export const api = {
     });
   },
 
-  adminSetStatus(slug: string, pin: string, juz: number, q: number, status: string, name?: string) {
+  adminSetStatus(slug: string, pin: string, juz: number, q: number, status: string, name?: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/set-status`, {
       method: "POST",
-      body: JSON.stringify({ pin, juz, q, status, name }),
+      body: JSON.stringify({ pin, juz, q, status, name, khatam_id: khatamId }),
     });
   },
 
-  adminAssignJuz(slug: string, pin: string, juz: number, status: string, name?: string) {
+  adminAssignJuz(slug: string, pin: string, juz: number, status: string, name?: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/assign-juz`, {
       method: "POST",
-      body: JSON.stringify({ pin, juz, status, name }),
+      body: JSON.stringify({ pin, juz, status, name, khatam_id: khatamId }),
     });
   },
 
-  adminSetClaimLimit(slug: string, pin: string, limit: number) {
+  adminSetClaimLimit(slug: string, pin: string, limit: number, khatamId?: number) {
     return request<{ ok: boolean; claim_limit: number }>(`/khatams/${slug}/admin/set-claim-limit`, {
       method: "POST",
-      body: JSON.stringify({ pin, limit }),
+      body: JSON.stringify({ pin, limit, khatam_id: khatamId }),
     });
   },
 
@@ -228,6 +229,49 @@ export const api = {
     );
   },
 
+  adminRenameKhatam(slug: string, pin: string, name: string, khatamId: number) {
+    return request<{ ok: boolean; id: number; name: string }>(
+      `/khatams/${slug}/admin/rename`,
+      {
+        method: "POST",
+        body: JSON.stringify({ pin, name, khatam_id: khatamId }),
+      },
+    );
+  },
+
+  adminSetParticipationMode(
+    slug: string,
+    pin: string,
+    participationMode: ParticipationMode,
+    khatamId: number,
+  ) {
+    return request<{ ok: boolean; participation_mode: ParticipationMode }>(
+      `/khatams/${slug}/admin/participation-mode`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          pin,
+          participation_mode: participationMode,
+          khatam_id: khatamId,
+        }),
+      },
+    );
+  },
+
+  adminDuplicateKhatam(slug: string, pin: string, khatamId: number) {
+    return request<KhatamMeta>(`/khatams/${slug}/admin/duplicate`, {
+      method: "POST",
+      body: JSON.stringify({ pin, khatam_id: khatamId }),
+    });
+  },
+
+  adminRecordCompletedKhatam(slug: string, pin: string, name: string, khatamId: number) {
+    return request<KhatamMeta>(`/khatams/${slug}/admin/record-completed`, {
+      method: "POST",
+      body: JSON.stringify({ pin, name, khatam_id: khatamId }),
+    });
+  },
+
   adminGetParticipants(slug: string, pin: string) {
     return request<{ participants: ParticipantInfo[] }>(
       `/khatams/${slug}/admin/participants?pin=${encodeURIComponent(pin)}`
@@ -255,17 +299,17 @@ export const api = {
     );
   },
 
-  adminResetAll(slug: string, pin: string) {
+  adminResetAll(slug: string, pin: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/reset-all`, {
       method: "POST",
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ pin, khatam_id: khatamId }),
     });
   },
 
-  adminResetJuz(slug: string, pin: string, juz: number) {
+  adminResetJuz(slug: string, pin: string, juz: number, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/reset-juz`, {
       method: "POST",
-      body: JSON.stringify({ pin, juz }),
+      body: JSON.stringify({ pin, juz, khatam_id: khatamId }),
     });
   },
 
@@ -276,17 +320,17 @@ export const api = {
     });
   },
 
-  adminDelete(slug: string, pin: string) {
+  adminDelete(slug: string, pin: string, khatamId?: number) {
     return request<{ ok: boolean }>(`/khatams/${slug}/admin/delete`, {
       method: "DELETE",
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ pin, khatam_id: khatamId }),
     });
   },
 
-  adminToggleGlobeNames(slug: string, pin: string) {
+  adminToggleGlobeNames(slug: string, pin: string, khatamId?: number) {
     return request<{ ok: boolean; show_names_on_globe: boolean }>(
       `/khatams/${slug}/admin/toggle-globe-names`,
-      { method: "POST", body: JSON.stringify({ pin }) }
+      { method: "POST", body: JSON.stringify({ pin, khatam_id: khatamId }) }
     );
   },
 

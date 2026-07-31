@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from "react-router-dom";
-import { Menu, Home, Activity, BarChart2, UserPlus, LogIn, Shield, LibraryBig } from "lucide-react";
+import { Menu, Home, Activity, BarChart2, UserPlus, LogIn, Shield, LibraryBig, BookOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,11 +31,12 @@ export default function Navbar() {
     { name: "Join a Khatam", path: "/", hash: "join-khatam", icon: LogIn },
   ];
 
-  const navItems = slug
+  const navItems: NavLinkItem[] = slug
     ? [
       ...baseItems,
-      { name: "Tracker", path: `/k/${slug}`, icon: Activity },
-      { name: "Metrics", path: `/k/${slug}/metrics`, icon: BarChart2 },
+      { name: "Overview", path: `/k/${slug}`, icon: Activity },
+      { name: "Tracker", path: `/k/${slug}/tracker`, icon: BookOpen },
+      { name: "Dashboard", path: `/k/${slug}/metrics`, icon: BarChart2 },
       { name: "Admin", path: `/k/${slug}/admin`, icon: Shield },
     ]
     : baseItems;

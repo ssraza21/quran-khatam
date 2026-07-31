@@ -6,6 +6,7 @@ import AdminPage from "./pages/AdminPage";
 import MetricsPage from "./pages/MetricsPage";
 import GlobePage from "./pages/GlobePage";
 import CampaignDirectoryPage from "@/pages/CampaignDirectoryPage";
+import CampaignOverviewPage from "@/pages/CampaignOverviewPage";
 import { CompletionToastProvider } from "./components/ui/CompletionToast";
 
 export default function App() {
@@ -15,7 +16,8 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/campaigns" element={<CampaignDirectoryPage />} />
-          <Route path="/k/:slug" element={<KhatamPage />} />
+          <Route path="/k/:slug" element={<CampaignOverviewPage />} />
+          <Route path="/k/:slug/tracker" element={<KhatamPage />} />
           <Route path="/k/:slug/metrics" element={<MetricsPage />} />
           <Route path="/k/:slug/admin" element={<AdminPage />} />
           <Route path="/globe" element={<GlobePage />} />

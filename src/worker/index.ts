@@ -1,9 +1,81 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { createServiceClient } from "./lib/supabase";
 import { hashPin, verifyPin } from "./lib/pin";
 import { isValidSlug, isValidPin } from "./lib/validators";
 
 const app = new Hono<{ Bindings: Env }>();
+
+type CampaignShareCard = {
+  title: string;
+  description: string;
+  imagePath: string;
+  imageAlt: string;
+};
+
+const CAMPAIGN_SHARE_CARDS: Record<string, CampaignShareCard> = {
+  "khatams-for-abdul": {
+    title: "Khatams for Abdul",
+    description: "Join us in completing the Qur’an together for Abdul.",
+    imagePath: "/og/khatams-for-abdul.jpg",
+    imageAlt: "Khatams for Abdul — join us in completing the Qur’an together",
+  },
+};
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+async function campaignPageWithShareMetadata(c: Context<{ Bindings: Env }>) {
+  const slug = c.req.param("slug");
+  const shareCard = CAMPAIGN_SHARE_CARDS[slug];
+  const page = await c.env.ASSETS.fetch(c.req.raw);
+
+  if (!shareCard || !page.ok) return page;
+
+  const canonicalUrl = new URL(`/k/${slug}`, c.req.url).href;
+  const imageUrl = new URL(shareCard.imagePath, c.req.url).href;
+  const documentTitle = `${shareCard.title} | Quran Khatam`;
+  const metadata = `
+    <meta name="description" content="${escapeHtmlAttribute(shareCard.description)}" />
+    <link rel="canonical" href="${escapeHtmlAttribute(canonicalUrl)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Quran Khatam" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="${escapeHtmlAttribute(canonicalUrl)}" />
+    <meta property="og:title" content="${escapeHtmlAttribute(shareCard.title)}" />
+    <meta property="og:description" content="${escapeHtmlAttribute(shareCard.description)}" />
+    <meta property="og:image" content="${escapeHtmlAttribute(imageUrl)}" />
+    <meta property="og:image:secure_url" content="${escapeHtmlAttribute(imageUrl)}" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="${escapeHtmlAttribute(shareCard.imageAlt)}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtmlAttribute(shareCard.title)}" />
+    <meta name="twitter:description" content="${escapeHtmlAttribute(shareCard.description)}" />
+    <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl)}" />
+    <meta name="twitter:image:alt" content="${escapeHtmlAttribute(shareCard.imageAlt)}" />`;
+
+  return new HTMLRewriter()
+    .on("title", {
+      element(element) {
+        element.setInnerContent(documentTitle);
+      },
+    })
+    .on("head", {
+      element(element) {
+        element.append(metadata, { html: true });
+      },
+    })
+    .transform(page);
+}
+
+app.get("/k/:slug", campaignPageWithShareMetadata);
+app.get("/k/:slug/", campaignPageWithShareMetadata);
 
 // Helper: generate random hex string
 function randomHex(len: number): string {
@@ -63,6 +135,7 @@ type KhatamHistoryRow = {
   location_lng: number | null;
   show_names_on_globe: boolean;
   campaign_id: number | null;
+  participation_mode: "open" | "group";
   done: number;
   total: number;
   started: boolean;
@@ -775,10 +848,19 @@ app.delete("/api/khatams/:slug/solo/delete", async (c) => {
 app.post("/api/khatams/:slug/admin/set-status", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin, juz, q, status, name } = await c.req.json<{ pin: string; juz: number; q: number; status: string; name?: string }>();
+  const { pin, juz, q, status, name, khatam_id } = await c.req.json<{
+    pin: string;
+    juz: number;
+    q: number;
+    status: string;
+    name?: string;
+    khatam_id?: number;
+  }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   // Get current slot for preserving claimed_by when no name override provided
   const { data: currentSlot } = await db
@@ -816,10 +898,18 @@ app.post("/api/khatams/:slug/admin/set-status", async (c) => {
 app.post("/api/khatams/:slug/admin/assign-juz", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin, juz, status, name } = await c.req.json<{ pin: string; juz: number; status: string; name?: string }>();
+  const { pin, juz, status, name, khatam_id } = await c.req.json<{
+    pin: string;
+    juz: number;
+    status: string;
+    name?: string;
+    khatam_id?: number;
+  }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   if (!juz || juz < 1 || juz > 30) return c.json({ error: "Invalid Juz number" }, 400);
 
@@ -849,20 +939,25 @@ app.post("/api/khatams/:slug/admin/assign-juz", async (c) => {
 app.post("/api/khatams/:slug/admin/set-claim-limit", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin, limit } = await c.req.json<{ pin: string; limit: number }>();
+  const { pin, limit, khatam_id } = await c.req.json<{
+    pin: string;
+    limit: number;
+    khatam_id?: number;
+  }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   if (typeof limit !== "number" || limit < 1 || limit > 120) {
     return c.json({ error: "Limit must be between 1 and 120" }, 400);
   }
 
-  // Apply to all khatams in this slug so the setting feels global to the group
   const { error } = await db
     .from("khatams")
     .update({ claim_limit: limit })
-    .eq("slug", slug);
+    .eq("id", khatam.id);
 
   if (error) return c.json({ error: "Failed to update claim limit" }, 500);
 
@@ -971,6 +1066,125 @@ app.post("/api/khatams/:slug/admin/bulk-new-khatams", async (c) => {
     created: Number(created),
     target_total,
   }, Number(created) > 0 ? 201 : 200);
+});
+
+// POST /api/khatams/:slug/admin/rename — Rename one selected khatam round
+app.post("/api/khatams/:slug/admin/rename", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name, khatam_id } = await c.req.json<{
+    pin: string;
+    name: string;
+    khatam_id: number;
+  }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  if (!name?.trim()) return c.json({ error: "Khatam name is required" }, 400);
+  if (name.trim().length > 80) return c.json({ error: "Khatam name is too long" }, 400);
+
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+
+  const { data, error } = await db
+    .from("khatams")
+    .update({ name: name.trim() })
+    .eq("id", khatam.id)
+    .select("id, name")
+    .single();
+
+  if (error || !data) return c.json({ error: "Failed to rename khatam" }, 500);
+  return c.json({ ok: true, id: data.id, name: data.name });
+});
+
+// POST /api/khatams/:slug/admin/participation-mode — Categorize one Khatam
+app.post("/api/khatams/:slug/admin/participation-mode", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, participation_mode, khatam_id } = await c.req.json<{
+    pin: string;
+    participation_mode: "open" | "group";
+    khatam_id: number;
+  }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  if (participation_mode !== "open" && participation_mode !== "group") {
+    return c.json({ error: "Invalid participation mode" }, 400);
+  }
+
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+
+  const { error } = await db
+    .from("khatams")
+    .update({ participation_mode })
+    .eq("id", khatam.id);
+
+  if (error) return c.json({ error: "Failed to update Khatam category" }, 500);
+  return c.json({ ok: true, participation_mode });
+});
+
+// POST /api/khatams/:slug/admin/duplicate — Duplicate one selected khatam
+app.post("/api/khatams/:slug/admin/duplicate", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, khatam_id } = await c.req.json<{ pin: string; khatam_id: number }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+
+  const { data: newId, error } = await db.rpc("duplicate_khatam_round", {
+    p_source_khatam_id: khatam.id,
+  });
+  if (error || !newId) return c.json({ error: "Failed to duplicate khatam" }, 500);
+
+  const { data: duplicate, error: fetchError } = await db
+    .from("khatams")
+    .select("id, slug, name, khatam_num, created_at, completed_at, is_solo, participation_mode")
+    .eq("id", newId)
+    .single();
+
+  if (fetchError || !duplicate) return c.json({ error: "Duplicate created but could not be loaded" }, 500);
+  return c.json(duplicate, 201);
+});
+
+// POST /api/khatams/:slug/admin/record-completed — Add one offline completed group khatam
+app.post("/api/khatams/:slug/admin/record-completed", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, name, khatam_id } = await c.req.json<{
+    pin: string;
+    name: string;
+    khatam_id: number;
+  }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  if (!name?.trim()) return c.json({ error: "A family or institution name is required" }, 400);
+  if (name.trim().length > 80) return c.json({ error: "Name is too long" }, 400);
+
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+
+  const { data: newId, error } = await db.rpc("record_completed_khatam", {
+    p_source_khatam_id: khatam.id,
+    p_name: name.trim(),
+  });
+  if (error || !newId) return c.json({ error: "Failed to record completed khatam" }, 500);
+
+  const { data: completed, error: fetchError } = await db
+    .from("khatams")
+    .select("id, slug, name, khatam_num, created_at, completed_at, is_solo, participation_mode")
+    .eq("id", newId)
+    .single();
+
+  if (fetchError || !completed) {
+    return c.json({ error: "Completed khatam was recorded but could not be loaded" }, 500);
+  }
+  return c.json(completed, 201);
 });
 
 // POST /api/khatams/:slug/admin/assign-all — Assign all 30 Juz to one person/group
@@ -1114,10 +1328,12 @@ app.post("/api/khatams/:slug/admin/set-participant-limit", async (c) => {
 app.post("/api/khatams/:slug/admin/reset-all", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin } = await c.req.json<{ pin: string }>();
+  const { pin, khatam_id } = await c.req.json<{ pin: string; khatam_id?: number }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   const { error } = await db
     .from("slots")
@@ -1136,10 +1352,16 @@ app.post("/api/khatams/:slug/admin/reset-all", async (c) => {
 app.post("/api/khatams/:slug/admin/reset-juz", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin, juz } = await c.req.json<{ pin: string; juz: number }>();
+  const { pin, juz, khatam_id } = await c.req.json<{
+    pin: string;
+    juz: number;
+    khatam_id?: number;
+  }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   const { error } = await db
     .from("slots")
@@ -1203,10 +1425,12 @@ app.post("/api/khatams/:slug/admin/new-khatam", async (c) => {
 app.delete("/api/khatams/:slug/admin/delete", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin } = await c.req.json<{ pin: string }>();
+  const { pin, khatam_id } = await c.req.json<{ pin: string; khatam_id?: number }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   const { data: deleted, error } = await db.rpc("delete_khatam_round", {
     p_khatam_id: khatam.id,
@@ -1221,10 +1445,12 @@ app.delete("/api/khatams/:slug/admin/delete", async (c) => {
 app.post("/api/khatams/:slug/admin/toggle-globe-names", async (c) => {
   const db = createServiceClient(c.env);
   const slug = c.req.param("slug");
-  const { pin } = await c.req.json<{ pin: string }>();
+  const { pin, khatam_id } = await c.req.json<{ pin: string; khatam_id?: number }>();
 
-  const { valid, khatam } = await verifyAdmin(db, slug, pin);
-  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
 
   const newValue = !(khatam.show_names_on_globe ?? true);
   const { error } = await db
@@ -1250,5 +1476,8 @@ async function checkCompletion(db: ReturnType<typeof createServiceClient>, khata
     .update({ completed_at: count === 120 ? new Date().toISOString() : null })
     .eq("id", khatamId);
 }
+
+// Campaign sub-pages still use the SPA shell when Worker-first routing is enabled for /k/*.
+app.get("/k/*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default app;

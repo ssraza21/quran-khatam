@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import type { Slot, StatusKey } from "@/lib/types";
+import type { ParticipationMode, Slot, StatusKey } from "@/lib/types";
 import { Q_SHORT, COLORS } from "@/lib/constants";
 import { supabasePublic } from "@/lib/supabase";
 import { api, type ParticipantInfo } from "@/lib/api";
@@ -22,6 +22,7 @@ export interface KhatamInfo {
   campaign_description: string | null;
   campaign_searchable: boolean;
   campaign_goal: number;
+  participation_mode: ParticipationMode;
   done: number;
   total: number;
   started: boolean;
@@ -44,6 +45,20 @@ function dbToSlot(d: DbSlot): Slot {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function getNewestKhatam(khatams: KhatamInfo[]) {
+  return khatams.reduce<KhatamInfo | null>(
+    (newest, khatam) => !newest || khatam.khatam_num > newest.khatam_num ? khatam : newest,
+    null,
+  );
+}
+
+function getPreferredKhatam(khatams: KhatamInfo[]) {
+  const byRoundNumber = [...khatams].sort((a, b) => a.khatam_num - b.khatam_num);
+  return byRoundNumber.find(khatam => khatam.started && khatam.done < khatam.total)
+    ?? byRoundNumber.find(khatam => khatam.done < khatam.total)
+    ?? getNewestKhatam(khatams);
 }
 
 export function useKhatamState(slug: string) {
@@ -97,6 +112,7 @@ export function useKhatamState(slug: string) {
         campaign_description: k.campaign_description ?? null,
         campaign_searchable: k.campaign_searchable ?? false,
         campaign_goal: k.campaign_goal ?? allKhatams.length,
+        participation_mode: k.participation_mode ?? "open",
         done: k.done ?? 0,
         total: k.total ?? 120,
         started: k.started ?? (k.done ?? 0) > 0,
@@ -137,10 +153,12 @@ export function useKhatamState(slug: string) {
       if (infos.length > 0) {
         const storedId = localStorage.getItem(`selectedKhatamId:${slug}`);
         const remembered = storedId ? infos.find(k => k.id === Number(storedId)) : null;
-        const target = remembered ?? infos[0];
-        setSelectedKhatamId(target.id);
-        setKhatamNum(target.khatam_num);
-        await loadSlots(target.id);
+        const target = remembered ?? getPreferredKhatam(infos);
+        if (target) {
+          setSelectedKhatamId(target.id);
+          setKhatamNum(target.khatam_num);
+          await loadSlots(target.id);
+        }
       } else {
         setSlots([]);
         setKhatams([]);
@@ -183,7 +201,7 @@ export function useKhatamState(slug: string) {
     return () => { supabasePublic.removeChannel(channel); };
   }, [selectedKhatamId, loadSlots, loadKhatams]);
 
-  const latestKhatamId = khatams.length > 0 ? khatams[0].id : null;
+  const latestKhatamId = getNewestKhatam(khatams)?.id ?? null;
   const isLatestKhatam = selectedKhatamId === latestKhatamId;
 
   // Derive solo mode from the currently selected khatam
@@ -336,7 +354,14 @@ export function useKhatamState(slug: string) {
     const trimmedName = newKhatamName.trim() || undefined;
 
     try {
-      await api.adminNewKhatam(slug, adminPin, trimmedName);
+      const created = await api.adminNewKhatam(slug, adminPin, trimmedName);
+      const infos = await loadKhatams();
+      const target = infos.find(info => info.id === created.id) ?? getNewestKhatam(infos);
+      if (target) {
+        setSelectedKhatamId(target.id);
+        setKhatamNum(target.khatam_num);
+        await loadSlots(target.id);
+      }
     } catch (e: any) {
       toast.error(e.message || "Failed to start new khatam");
       return;
@@ -345,19 +370,20 @@ export function useKhatamState(slug: string) {
     setAdminSelected(null);
     setNewKhatamName("");
     toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${khatamNum + 1} has begun — Bismillah!`);
-    const infos = await loadKhatams();
-    if (infos.length > 0) {
-      setSelectedKhatamId(infos[0].id);
-      setKhatamNum(infos[0].khatam_num);
-      await loadSlots(infos[0].id);
-    }
   };
 
   const soloStartNewKhatam = async () => {
     const trimmedName = newKhatamName.trim() || undefined;
 
     try {
-      await api.soloNewKhatam(slug, trimmedName);
+      const created = await api.soloNewKhatam(slug, trimmedName);
+      const infos = await loadKhatams();
+      const target = infos.find(info => info.id === created.id) ?? getNewestKhatam(infos);
+      if (target) {
+        setSelectedKhatamId(target.id);
+        setKhatamNum(target.khatam_num);
+        await loadSlots(target.id);
+      }
     } catch (e: any) {
       toast.error(e.message || "Failed to start new khatam");
       return;
@@ -365,12 +391,6 @@ export function useKhatamState(slug: string) {
 
     setNewKhatamName("");
     toast(trimmedName ? `"${trimmedName}" has begun — Bismillah!` : `Khatam ${khatamNum + 1} has begun — Bismillah!`);
-    const infos = await loadKhatams();
-    if (infos.length > 0) {
-      setSelectedKhatamId(infos[0].id);
-      setKhatamNum(infos[0].khatam_num);
-      await loadSlots(infos[0].id);
-    }
   };
 
   const soloResetAll = async () => {
@@ -404,10 +424,11 @@ export function useKhatamState(slug: string) {
 
     toast.success(`Khatam #${khatamNum} deleted`);
     const infos = await loadKhatams();
-    if (infos.length > 0) {
-      setSelectedKhatamId(infos[0].id);
-      setKhatamNum(infos[0].khatam_num);
-      await loadSlots(infos[0].id);
+    const target = getPreferredKhatam(infos);
+    if (target) {
+      setSelectedKhatamId(target.id);
+      setKhatamNum(target.khatam_num);
+      await loadSlots(target.id);
     } else {
       setSlots([]);
       setSelectedKhatamId(null);
@@ -471,7 +492,7 @@ export function useKhatamState(slug: string) {
     if (!juz || !q || !adminMode) return;
 
     try {
-      await api.adminSetStatus(slug, adminPin, juz, q, st, assignedTo);
+      await api.adminSetStatus(slug, adminPin, juz, q, st, assignedTo, selectedKhatamId ?? undefined);
     } catch (e: any) {
       toast.error(e.message || "Failed to update status");
       return;
@@ -487,7 +508,7 @@ export function useKhatamState(slug: string) {
     if (!adminMode) return;
 
     try {
-      await api.adminAssignJuz(slug, adminPin, juz, st, assignedTo);
+      await api.adminAssignJuz(slug, adminPin, juz, st, assignedTo, selectedKhatamId ?? undefined);
     } catch (e: any) {
       toast.error(e.message || "Failed to assign Juz");
       return;
@@ -502,7 +523,7 @@ export function useKhatamState(slug: string) {
   const adminSaveClaimLimit = async () => {
     if (!adminMode) return;
     try {
-      await api.adminSetClaimLimit(slug, adminPin, claimLimitInput);
+      await api.adminSetClaimLimit(slug, adminPin, claimLimitInput, selectedKhatamId ?? undefined);
     } catch (e: any) {
       toast.error(e.message || "Failed to update claim limit");
       return;
@@ -560,13 +581,77 @@ export function useKhatamState(slug: string) {
       );
 
       const infos = await loadKhatams();
-      if (infos.length > 0) {
-        setSelectedKhatamId(infos[0].id);
-        setKhatamNum(infos[0].khatam_num);
-        await loadSlots(infos[0].id);
+      const target = getNewestKhatam(infos);
+      if (target) {
+        setSelectedKhatamId(target.id);
+        setKhatamNum(target.khatam_num);
+        await loadSlots(target.id);
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Failed to create campaign rounds"));
+    }
+  };
+
+  const adminRenameKhatam = async (name: string) => {
+    if (!adminMode || !selectedKhatamId) return;
+    try {
+      await api.adminRenameKhatam(slug, adminPin, name, selectedKhatamId);
+      toast.success("Khatam renamed");
+      await loadKhatams();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to rename khatam"));
+    }
+  };
+
+  const adminSetParticipationMode = async (participationMode: ParticipationMode) => {
+    if (!adminMode || !selectedKhatamId) return;
+    try {
+      await api.adminSetParticipationMode(
+        slug,
+        adminPin,
+        participationMode,
+        selectedKhatamId,
+      );
+      toast.success(participationMode === "group"
+        ? "Moved to Families & institutions"
+        : "Moved to Open participation");
+      await loadKhatams();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update Khatam category"));
+    }
+  };
+
+  const adminDuplicateKhatam = async () => {
+    if (!adminMode || !selectedKhatamId) return;
+    try {
+      const duplicate = await api.adminDuplicateKhatam(slug, adminPin, selectedKhatamId);
+      const infos = await loadKhatams();
+      const target = infos.find(info => info.id === duplicate.id) ?? getNewestKhatam(infos);
+      toast.success(`Duplicated ${khatamName || `Khatam ${khatamNum}`}`);
+      if (target) {
+        setSelectedKhatamId(target.id);
+        setKhatamNum(target.khatam_num);
+        await loadSlots(target.id);
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to duplicate khatam"));
+    }
+  };
+
+  const adminRecordCompletedKhatam = async (name: string) => {
+    if (!adminMode || !selectedKhatamId) return;
+    try {
+      const completed = await api.adminRecordCompletedKhatam(
+        slug,
+        adminPin,
+        name,
+        selectedKhatamId,
+      );
+      toast.success(`${name} recorded as a completed khatam`);
+      await loadKhatams();
+      return completed;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to record completed khatam"));
     }
   };
 
@@ -623,7 +708,7 @@ export function useKhatamState(slug: string) {
     if (!confirmed) return;
 
     try {
-      await api.adminResetAll(slug, adminPin);
+      await api.adminResetAll(slug, adminPin, selectedKhatamId);
     } catch (e: any) {
       toast.error(e.message || "Failed to reset slots to available");
       return;
@@ -641,7 +726,7 @@ export function useKhatamState(slug: string) {
     if (!confirmed) return;
 
     try {
-      await api.adminResetJuz(slug, adminPin, juz);
+      await api.adminResetJuz(slug, adminPin, juz, selectedKhatamId);
     } catch (e: any) {
       toast.error(e.message || "Failed to reset Juz to available");
       return;
@@ -660,7 +745,7 @@ export function useKhatamState(slug: string) {
     if (!confirmed) return;
 
     try {
-      await api.adminDelete(slug, adminPin);
+      await api.adminDelete(slug, adminPin, selectedKhatamId);
     } catch (e: any) {
       toast.error(e.message || "Failed to delete khatam");
       return;
@@ -670,10 +755,11 @@ export function useKhatamState(slug: string) {
     setModal(null);
     toast.success(`Khatam #${khatamNum} deleted`);
     const infos = await loadKhatams();
-    if (infos.length > 0) {
-      setSelectedKhatamId(infos[0].id);
-      setKhatamNum(infos[0].khatam_num);
-      await loadSlots(infos[0].id);
+    const target = getPreferredKhatam(infos);
+    if (target) {
+      setSelectedKhatamId(target.id);
+      setKhatamNum(target.khatam_num);
+      await loadSlots(target.id);
     } else {
       setSlots([]);
       setSelectedKhatamId(null);
@@ -684,7 +770,7 @@ export function useKhatamState(slug: string) {
   const adminToggleGlobeNames = async () => {
     if (!adminMode) return;
     try {
-      const result = await api.adminToggleGlobeNames(slug, adminPin);
+      const result = await api.adminToggleGlobeNames(slug, adminPin, selectedKhatamId ?? undefined);
       toast.success(result.show_names_on_globe ? "Names shown on globe" : "Names hidden on globe");
       await loadKhatams();
     } catch (e: any) {
@@ -703,10 +789,11 @@ export function useKhatamState(slug: string) {
     selectedKhatamInfo?.campaign_searchable ?? fallbackKhatamInfo?.campaign_searchable ?? false;
   const campaignGoal =
     selectedKhatamInfo?.campaign_goal ?? fallbackKhatamInfo?.campaign_goal ?? khatams.length;
+  const participationMode = selectedKhatamInfo?.participation_mode ?? "open";
 
   return {
     slug, slots, khatamNum, khatamName, campaignName, campaignDescription, campaignSearchable,
-    campaignGoal,
+    campaignGoal, participationMode,
     khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
     isSolo,
@@ -727,6 +814,7 @@ export function useKhatamState(slug: string) {
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
     adminSaveClaimLimit, adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
+    adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminRecordCompletedKhatam,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     loadParticipants,
   };

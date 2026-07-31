@@ -113,7 +113,7 @@ export default function LandingPage() {
         cDescription.trim() || undefined,
         isSolo ? false : cSearchable,
       );
-      navigate(`/k/${result.slug}`);
+      navigate(`/k/${result.slug}${isSolo ? "/tracker" : ""}`);
     } catch (err: any) {
       setCErr(err.message || "Failed to create khatam");
     } finally {
