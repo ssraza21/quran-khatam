@@ -143,7 +143,7 @@ export default function KhatamPage() {
             {campaignName || khatamName || "Khatam"}
           </h1>
           {campaignDescription && (
-            <p className="max-w-2xl mx-auto mt-3 text-sm sm:text-base leading-relaxed text-white/75">
+            <p className="mx-auto mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-relaxed text-white/75 sm:text-base">
               {campaignDescription}
             </p>
           )}

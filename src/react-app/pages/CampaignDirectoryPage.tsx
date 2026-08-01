@@ -7,7 +7,6 @@ import {
   Clock3,
   Search,
   Sparkles,
-  Target,
 } from "lucide-react";
 import { api, type CampaignDirectoryItem } from "@/lib/api";
 import { getSurahName } from "@/lib/surahs";
@@ -177,17 +176,12 @@ export default function CampaignDirectoryPage() {
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {campaigns.map(campaign => {
-                const enabledGoals = (campaign.goals ?? []).filter(goal => goal.is_enabled);
-                const surahGoals = enabledGoals.filter(goal => goal.goal_type === "surah_recitation");
-                const hasCombinedGoals = surahGoals.length > 0;
-                const completedGoals = enabledGoals.filter(goal => goal.completed >= goal.target).length;
-                const activeGoals = enabledGoals.filter(goal => goal.in_progress > 0 && goal.completed < goal.target).length;
-                const completionPct = enabledGoals.length > 0
-                  ? Math.round(enabledGoals.reduce((sum, goal) => sum + Math.min(1, goal.completed / goal.target), 0) / enabledGoals.length * 100)
-                  : campaign.goal > 0
-                    ? Math.min(100, Math.round((campaign.completed_khatams / campaign.goal) * 100))
-                    : 0;
-                const nextGoal = enabledGoals.find(goal => goal.completed < goal.target);
+                const surahGoals = (campaign.goals ?? []).filter(
+                  goal => goal.is_enabled && goal.goal_type === "surah_recitation",
+                );
+                const completionPct = campaign.goal > 0
+                  ? Math.min(100, Math.round((campaign.completed_khatams / campaign.goal) * 100))
+                  : 0;
 
                 return (
                   <Link
@@ -214,7 +208,7 @@ export default function CampaignDirectoryPage() {
                       {campaign.campaign_name}
                     </h3>
                     {campaign.description && (
-                      <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-gray-500">
+                      <p className="mt-2 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-gray-500">
                         {campaign.description}
                       </p>
                     )}
@@ -230,27 +224,22 @@ export default function CampaignDirectoryPage() {
                       </div>
                     )}
 
-                    <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="mt-4 grid grid-cols-2 gap-2">
                       <div className="rounded-xl bg-amber-50 px-2 py-2.5 text-center">
                         <Clock3 size={13} className="mx-auto text-amber-700" />
-                        <p className="mt-1 text-lg font-bold leading-none text-amber-800">{hasCombinedGoals ? activeGoals : campaign.in_progress_khatams}</p>
+                        <p className="mt-1 text-lg font-bold leading-none text-amber-800">{campaign.in_progress_khatams}</p>
                         <p className="mt-1 text-[9px] font-medium uppercase tracking-wide text-amber-700/70">In progress</p>
                       </div>
                       <div className="rounded-xl bg-green-50 px-2 py-2.5 text-center">
                         <CheckCircle2 size={13} className="mx-auto text-green-700" />
-                        <p className="mt-1 text-lg font-bold leading-none text-green-800">{hasCombinedGoals ? completedGoals : campaign.completed_khatams}</p>
+                        <p className="mt-1 text-lg font-bold leading-none text-green-800">{campaign.completed_khatams}</p>
                         <p className="mt-1 text-[9px] font-medium uppercase tracking-wide text-green-700/70">Complete</p>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 px-2 py-2.5 text-center">
-                        <Target size={13} className="mx-auto text-gray-500" />
-                        <p className="mt-1 text-lg font-bold leading-none text-gray-700">{hasCombinedGoals ? enabledGoals.length : campaign.goal}</p>
-                        <p className="mt-1 text-[9px] font-medium uppercase tracking-wide text-gray-500">{hasCombinedGoals ? "Goals" : "Goal"}</p>
                       </div>
                     </div>
 
                     <div className="mt-auto pt-5">
                       <div className="mb-1.5 flex items-center justify-between text-[11px] text-gray-400">
-                        <span>{hasCombinedGoals ? `${completedGoals} of ${enabledGoals.length} goals complete` : `${campaign.completed_khatams} of ${campaign.goal} completed`}</span>
+                        <span>{campaign.completed_khatams} of {campaign.goal} Khatams complete</span>
                         <span>{completionPct}%</span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
@@ -261,9 +250,7 @@ export default function CampaignDirectoryPage() {
                       </div>
                       <div className="mt-4 flex items-center justify-between text-xs">
                         <span className="truncate text-gray-500">
-                          {nextGoal?.goal_type === "surah_recitation"
-                            ? `Next: Surah ${getSurahName(nextGoal.surah_number)}`
-                            : `Next: ${campaign.active_round_name}`}
+                          Next: {campaign.active_round_name}
                         </span>
                         <span className="ml-3 inline-flex shrink-0 items-center gap-1 font-semibold text-[#8B0000]">
                           Open <ArrowRight size={13} />

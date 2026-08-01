@@ -5,6 +5,7 @@ import { Globe } from "@/components/ui/globe";
 import { api } from "@/lib/api";
 import type { CampaignSearchResult } from "@/lib/api";
 import { COUNTRIES } from "@/lib/countries";
+import DescriptionEditor from "@/components/ui/DescriptionEditor";
 
 function nameToSlug(name: string): string {
   return name
@@ -114,8 +115,8 @@ export default function LandingPage() {
         isSolo ? false : cSearchable,
       );
       navigate(`/k/${result.slug}${isSolo ? "/tracker" : ""}`);
-    } catch (err: any) {
-      setCErr(err.message || "Failed to create khatam");
+    } catch (err: unknown) {
+      setCErr(err instanceof Error ? err.message : "Failed to create khatam");
     } finally {
       setCLoading(false);
     }
@@ -320,13 +321,13 @@ export default function LandingPage() {
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">
                     Description or notes <span className="normal-case text-gray-300">(optional)</span>
                   </label>
-                  <textarea
+                  <DescriptionEditor
+                    id="campaign-description"
                     value={cDescription}
-                    onChange={e => setCDescription(e.target.value)}
+                    onChange={setCDescription}
                     placeholder="Add a dedication, deadline, instructions, or other context"
                     maxLength={500}
-                    rows={3}
-                    className="w-full resize-y px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#8B0000] transition-colors"
+                    minRows={4}
                   />
                 </div>
 
@@ -505,7 +506,7 @@ export default function LandingPage() {
                     >
                       <span className="block text-sm font-semibold text-gray-800">{result.campaign_name}</span>
                       {result.description && (
-                        <span className="block text-xs text-gray-500 mt-1 line-clamp-2">{result.description}</span>
+                        <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs text-gray-500">{result.description}</span>
                       )}
                       <span className="block text-[11px] text-[#8B0000] mt-1.5">
                         {result.round_name} · /k/{result.slug}

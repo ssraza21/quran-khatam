@@ -17,6 +17,7 @@ import {
 import type { ParticipantInfo } from "@/lib/api";
 import type { CampaignGoal, ParticipationMode } from "@/lib/types";
 import SurahGoalsAdmin from "@/components/khatam/SurahGoalsAdmin";
+import DescriptionEditor from "@/components/ui/DescriptionEditor";
 
 interface CreateKhatamsOptions {
   count: number;
@@ -235,15 +236,14 @@ export default function AdminSettingsPanel({
               <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Description or notes
               </label>
-              <textarea
+              <DescriptionEditor
+                id="admin-campaign-description"
                 value={descriptionInput}
-                onChange={event => setDescriptionInput(event.target.value)}
+                onChange={setDescriptionInput}
                 placeholder="Optional context, dedication, deadline, or instructions"
                 maxLength={500}
-                rows={4}
-                className="w-full resize-y rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#8B0000] focus:ring-2 focus:ring-[#8B0000]/10"
+                minRows={5}
               />
-              <p className="mt-1 text-right text-[10px] text-gray-400">{descriptionInput.length}/500</p>
             </div>
             <label className="flex cursor-pointer items-start gap-2.5">
               <input

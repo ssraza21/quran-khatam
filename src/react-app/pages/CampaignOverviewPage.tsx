@@ -4,7 +4,6 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
-  Building2,
   CheckCircle2,
   Clock3,
   Search,
@@ -114,7 +113,6 @@ export default function CampaignOverviewPage() {
   const quranGoal = goals.find(goal => goal.goal_type === "quran_khatam");
   const surahGoals = goals.filter(goal => goal.goal_type === "surah_recitation" && goal.is_enabled);
   const quranEnabled = quranGoal?.is_enabled ?? true;
-  const enabledGoalCount = goals.filter(goal => goal.is_enabled).length;
   const campaign = khatams[0];
   const completed = khatams.filter(khatam => (khatam.done ?? 0) === (khatam.total ?? 120)).length;
   const active = khatams.filter(khatam => khatam.started && (khatam.done ?? 0) < (khatam.total ?? 120)).length;
@@ -167,7 +165,7 @@ export default function CampaignOverviewPage() {
                 {campaign.campaign_name || campaign.name || "Khatam campaign"}
               </h1>
               {campaign.campaign_description && (
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
+                <p className="mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-relaxed text-white/70 sm:text-base">
                   {campaign.campaign_description}
                 </p>
               )}
@@ -191,33 +189,19 @@ export default function CampaignOverviewPage() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/15 pt-5 text-sm text-white/70">
-            <span><strong className="text-xl text-white">{enabledGoalCount}</strong> goal{enabledGoalCount === 1 ? "" : "s"}</span>
             {quranEnabled && <span><strong className="text-xl text-white">{active}</strong> Khatams in progress</span>}
             {quranEnabled && <span><strong className="text-xl text-white">{completed}</strong> Khatams complete</span>}
+            {surahGoals.length > 0 && <span><strong className="text-xl text-white">{surahGoals.length}</strong> Surah recitation{surahGoals.length === 1 ? "" : "s"}</span>}
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1100px] px-5 py-8">
-        {quranEnabled && <label className="flex max-w-xl items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 shadow-sm focus-within:border-[#8B0000]/50">
-          <Search size={17} className="shrink-0 text-[#8B0000]" />
-          <input
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder="Search a family, institution, or Khatam number"
-            className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm text-gray-800 outline-none"
-          />
-        </label>}
-        {quranEnabled && <p className="mt-2 text-xs text-gray-400">
-          Khatams with unfinished portions appear first.
-        </p>}
-
         {surahGoals.length > 0 && (
-          <section className="mt-9">
+          <section>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-[#8B0000]"><Target size={17} /><p className="text-xs font-semibold uppercase tracking-[0.16em]">Surah recitations</p></div>
-                <h2 className="mt-1 text-2xl font-semibold text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>Collective Surah goals</h2>
+                <h2 className="flex items-center gap-2 text-2xl font-semibold text-gray-950" style={{ fontFamily: "'Playfair Display', serif" }}><Target size={18} className="text-[#8B0000]" />Surah Recitations</h2>
                 <p className="mt-1 text-sm text-gray-500">Pledge a number of recitations, then return to mark them complete.</p>
               </div>
               <span className="text-xs font-medium text-gray-400">{surahGoals.length}</span>
@@ -238,16 +222,27 @@ export default function CampaignOverviewPage() {
           </section>
         )}
 
-        {quranEnabled && <section className="mt-9">
+        {quranEnabled && <section className={`${surahGoals.length > 0 ? "mt-12 border-t border-gray-200 pt-8" : ""}`}>
+          <h2 className="text-2xl font-semibold text-gray-950" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Full Qur’an Khatam
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">Complete the Qur’an through individual portions or coordinated groups.</p>
+          <label className="mt-5 flex max-w-xl items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 shadow-sm focus-within:border-[#8B0000]/50 focus-within:ring-2 focus-within:ring-[#8B0000]/10">
+            <Search size={17} className="shrink-0 text-[#8B0000]" />
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search by name or Khatam number"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm text-gray-800 outline-none"
+            />
+          </label>
+          <p className="mt-2 text-xs text-gray-400">Khatams with unfinished portions appear first.</p>
+        </section>}
+
+        {quranEnabled && <section className="mt-10">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-[#8B0000]">
-                <Users size={17} />
-                <p className="text-xs font-semibold uppercase tracking-[0.16em]">Open participation</p>
-              </div>
-              <h2 className="mt-1 text-2xl font-semibold text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>
-                Individual portions
-              </h2>
+              <h3 className="flex items-center gap-2 text-xl font-semibold text-gray-900"><Users size={17} className="text-[#8B0000]" />Individual portions</h3>
               <p className="mt-1 text-sm text-gray-500">Anyone with the link can select a quarter or Juz.</p>
             </div>
             <span className="text-xs font-medium text-gray-400">{openKhatams.length}</span>
@@ -257,7 +252,7 @@ export default function CampaignOverviewPage() {
           </div>
           {openKhatams.length === 0 && (
             <p className="mt-5 border-t border-gray-200 py-6 text-sm text-gray-400">
-              No open-participation Khatams match this search.
+              No individual-portion Khatams match this search.
             </p>
           )}
         </section>}
@@ -265,13 +260,7 @@ export default function CampaignOverviewPage() {
         {quranEnabled && <section className="mt-12">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-[#8B0000]">
-                <Building2 size={17} />
-                <p className="text-xs font-semibold uppercase tracking-[0.16em]">Families & institutions</p>
-              </div>
-              <h2 className="mt-1 text-2xl font-semibold text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>
-                Group Khatams
-              </h2>
+              <h3 className="flex items-center gap-2 text-xl font-semibold text-gray-900"><BookOpen size={17} className="text-[#8B0000]" />Group Khatams</h3>
               <p className="mt-1 text-sm text-gray-500">Whole-Quran commitments coordinated by a family, class, or institution.</p>
             </div>
             <span className="text-xs font-medium text-gray-400">{groupKhatams.length}</span>
@@ -281,7 +270,7 @@ export default function CampaignOverviewPage() {
           </div>
           {groupKhatams.length === 0 && (
             <p className="mt-5 border-t border-gray-200 py-6 text-sm text-gray-400">
-              {query ? "No group Khatams match this search." : "No family or institution Khatams have been added yet."}
+              {query ? "No group Khatams match this search." : "No group Khatams have been added yet."}
             </p>
           )}
         </section>}

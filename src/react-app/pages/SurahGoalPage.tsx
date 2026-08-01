@@ -76,6 +76,7 @@ export default function SurahGoalPage() {
   const mineRemaining = mine ? mine.pledged_count - mine.completed_count : 0;
   const available = goal ? Math.max(goal.target - goal.pledged, 0) : 0;
   const pct = goal && goal.target > 0 ? Math.min(100, Math.round((goal.completed / goal.target) * 100)) : 0;
+  const inProgressPct = goal && goal.target > 0 ? Math.min(100, Math.round((goal.in_progress / goal.target) * 100)) : 0;
   const surahName = getSurahName(goal?.surah_number);
 
   const saveName = () => {
@@ -144,27 +145,71 @@ export default function SurahGoalPage() {
           </div>
           <p className="mt-7 text-xs font-semibold uppercase tracking-[0.25em] text-white/55">{campaignName}</p>
           <h1 className="mt-2 text-4xl font-normal tracking-wide text-white sm:text-5xl" style={{ fontFamily: "'Playfair Display', serif" }}>Surah {surahName}</h1>
-          {campaignDescription && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/70">{campaignDescription}</p>}
+          {campaignDescription && <p className="mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-relaxed text-white/70">{campaignDescription}</p>}
           {!goal.is_enabled && <p className="mt-4 inline-flex rounded-full bg-amber-300/15 px-3 py-1.5 text-xs font-semibold text-amber-100">This goal is currently archived.</p>}
         </div>
       </header>
 
       <main className="mx-auto max-w-[1000px] px-5 py-8">
         <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Collective progress</p>
-              <p className="mt-2 text-4xl font-bold text-gray-900"><span className="text-[#8B0000]">{goal.completed.toLocaleString()}</span> <span className="text-xl font-medium text-gray-400">of {goal.target.toLocaleString()}</span></p>
-              <p className="mt-2 text-sm text-gray-500">completed recitations</p>
+              <h2 className="mt-1 text-2xl font-semibold text-gray-900">Every recitation brings the community closer</h2>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-              <div className="rounded-xl bg-green-50 px-3 py-3"><CheckCircle2 size={14} className="mx-auto text-green-700" /><p className="mt-1 text-lg font-bold text-green-800">{goal.completed}</p><p className="text-[9px] uppercase text-green-700/70">Complete</p></div>
-              <div className="rounded-xl bg-amber-50 px-3 py-3"><Clock3 size={14} className="mx-auto text-amber-700" /><p className="mt-1 text-lg font-bold text-amber-800">{goal.in_progress}</p><p className="text-[9px] uppercase text-amber-700/70">Pledged</p></div>
-              <div className="rounded-xl bg-gray-50 px-3 py-3"><BookOpen size={14} className="mx-auto text-gray-500" /><p className="mt-1 text-lg font-bold text-gray-700">{available}</p><p className="text-[9px] uppercase text-gray-500">Available</p></div>
+            <p className="text-sm text-gray-500"><strong className="text-lg text-gray-900">{goal.target.toLocaleString()}</strong> recitations</p>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-green-200/80 bg-green-50/70 p-5 transition-colors hover:border-green-300 hover:bg-green-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-green-800">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100"><CheckCircle2 size={16} /></span>
+                  <span className="text-sm font-semibold">Completed</span>
+                </div>
+                <span className="text-xs font-semibold tabular-nums text-green-700">{pct}%</span>
+              </div>
+              <p className="mt-5 text-3xl font-semibold tabular-nums text-green-950">{goal.completed.toLocaleString()}</p>
+              <p className="mt-1 text-xs text-green-800/70">recitations finished</p>
+              <div
+                className="mt-4 h-2 overflow-hidden rounded-full bg-green-100"
+                role="progressbar"
+                aria-label="Completed recitations"
+                aria-valuemin={0}
+                aria-valuemax={goal.target}
+                aria-valuenow={goal.completed}
+              >
+                <div className="h-full rounded-full bg-green-700 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-5 transition-colors hover:border-amber-300 hover:bg-amber-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100"><Clock3 size={16} /></span>
+                  <span className="text-sm font-semibold">In progress</span>
+                </div>
+                <span className="text-xs font-semibold tabular-nums text-amber-700">{inProgressPct}%</span>
+              </div>
+              <p className="mt-5 text-3xl font-semibold tabular-nums text-amber-950">{goal.in_progress.toLocaleString()}</p>
+              <p className="mt-1 text-xs text-amber-800/70">pledged and awaiting completion</p>
+              <div
+                className="mt-4 h-2 overflow-hidden rounded-full bg-amber-100"
+                role="progressbar"
+                aria-label="Recitations in progress"
+                aria-valuemin={0}
+                aria-valuemax={goal.target}
+                aria-valuenow={goal.in_progress}
+              >
+                <div className="h-full rounded-full bg-amber-600 transition-[width] duration-500" style={{ width: `${inProgressPct}%` }} />
+              </div>
             </div>
           </div>
-          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-linear-to-r from-[#8B0000] to-[#B71C1C] transition-all" style={{ width: `${pct}%` }} /></div>
-          <p className="mt-2 text-right text-xs font-medium text-gray-400">{pct}% complete</p>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-4 text-xs text-gray-500">
+            <span className="inline-flex items-center gap-1.5"><BookOpen size={14} className="text-[#8B0000]" />{available.toLocaleString()} still available to pledge</span>
+            <span className="font-semibold tabular-nums text-[#8B0000]">{pct}% complete overall</span>
+          </div>
         </section>
 
         {((goal.is_enabled && goal.completed < goal.target) || goal.in_progress > 0) && (
@@ -207,10 +252,40 @@ export default function SurahGoalPage() {
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900"><Users size={18} className="text-[#8B0000]" /> Community pledges</h2><p className="mt-1 text-sm text-gray-500">{goal.contributor_count} participant{goal.contributor_count === 1 ? "" : "s"}</p></div></div>
           {contributions.length === 0 ? <p className="mt-5 border-t border-gray-100 py-8 text-center text-sm text-gray-400">No pledges yet. Be the first to participate.</p> : (
-            <div className="mt-4 divide-y divide-gray-100">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {contributions.map(item => {
                 const remaining = item.pledged_count - item.completed_count;
-                return <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-gray-800">{item.participant_name}</p><p className="mt-0.5 text-xs text-gray-400">{remaining > 0 ? `${remaining} still pledged` : "Pledge complete"}</p></div><div className="shrink-0 text-right"><p className="text-sm font-bold text-green-700">{item.completed_count} complete</p><p className="text-[10px] text-gray-400">of {item.pledged_count}</p></div></div>;
+                const participantPct = item.pledged_count > 0
+                  ? Math.min(100, Math.round((item.completed_count / item.pledged_count) * 100))
+                  : 0;
+                const isComplete = remaining === 0;
+                return (
+                  <div key={item.id} className="rounded-xl border border-gray-200 bg-[#FAFAF9] p-4 transition-colors hover:border-[#8B0000]/20 hover:bg-white">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-800">{item.participant_name}</p>
+                        <p className="mt-1 text-xs text-gray-400">{item.completed_count} of {item.pledged_count} completed</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${isComplete ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+                        {isComplete ? "Completed" : "In progress"}
+                      </span>
+                    </div>
+                    <div
+                      className="mt-4 flex h-2 overflow-hidden rounded-full bg-amber-100"
+                      role="progressbar"
+                      aria-label={`${item.participant_name}'s completed recitations`}
+                      aria-valuemin={0}
+                      aria-valuemax={item.pledged_count}
+                      aria-valuenow={item.completed_count}
+                    >
+                      <div className="h-full bg-green-700 transition-[width] duration-500" style={{ width: `${participantPct}%` }} />
+                    </div>
+                    <div className="mt-2 flex justify-between text-[10px]">
+                      <span className="font-medium text-green-700">{participantPct}% complete</span>
+                      {!isComplete && <span className="text-amber-700">{remaining} remaining</span>}
+                    </div>
+                  </div>
+                );
               })}
             </div>
           )}
