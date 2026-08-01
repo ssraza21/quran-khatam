@@ -104,6 +104,24 @@ type CampaignRow = {
   is_searchable: boolean;
   is_featured?: boolean;
   goal: number;
+  pin_hash?: string | null;
+};
+
+type CampaignGoalSummaryRow = {
+  id: number;
+  campaign_id: number;
+  goal_type: "quran_khatam" | "surah_recitation";
+  surah_number: number | null;
+  target: number;
+  display_order: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  pledged: number;
+  completed: number;
+  in_progress: number;
+  contributor_count: number;
 };
 
 type CampaignDirectoryRow = {
@@ -148,7 +166,7 @@ async function getCampaignForKhatam(
 ): Promise<CampaignRow | null> {
   const query = db
     .from("campaigns")
-    .select("id, slug, name, description, is_searchable, is_featured, goal");
+    .select("id, slug, name, description, is_searchable, is_featured, goal, pin_hash");
 
   const { data } = khatam.campaign_id
     ? await query.eq("id", khatam.campaign_id).maybeSingle()
@@ -187,10 +205,21 @@ async function resolveKhatam(
 
 // Helper: verify admin pin for a slug
 async function verifyAdmin(db: ReturnType<typeof createServiceClient>, slug: string, pin: string) {
+  const { data: campaignData } = await db
+    .from("campaigns")
+    .select("id, slug, name, description, is_searchable, is_featured, goal, pin_hash")
+    .eq("slug", slug)
+    .maybeSingle();
+  const campaign = (campaignData as CampaignRow | null) ?? null;
   const khatam = await getLatestKhatam(db, slug);
-  if (!khatam) return { valid: false, khatam: null };
-  const valid = await verifyPin(pin, khatam.pin_hash);
-  return { valid, khatam: valid ? khatam : null };
+  const storedHash = campaign?.pin_hash ?? khatam?.pin_hash;
+  if (!storedHash) return { valid: false, khatam: null, campaign };
+  const valid = await verifyPin(pin, storedHash);
+  return {
+    valid,
+    khatam: valid ? (khatam ?? null) : null,
+    campaign: valid ? campaign : null,
+  };
 }
 
 // Helper: per-participant claim limit override (null = use khatam default)
@@ -209,6 +238,22 @@ async function resolveClaimLimit(
 
   if (data?.claim_limit != null) return data.claim_limit;
   return khatam.claim_limit ?? 8;
+}
+
+async function quranGoalAcceptingClaims(
+  db: ReturnType<typeof createServiceClient>,
+  khatam: { campaign_id?: number | null; campaign_goal_id?: number | null },
+): Promise<boolean> {
+  if (!khatam.campaign_id) return true;
+  let query = db
+    .from("campaign_goals")
+    .select("is_enabled")
+    .eq("goal_type", "quran_khatam");
+  query = khatam.campaign_goal_id
+    ? query.eq("id", khatam.campaign_goal_id)
+    : query.eq("campaign_id", khatam.campaign_id);
+  const { data } = await query.maybeSingle();
+  return data?.is_enabled ?? true;
 }
 
 app.get("/api/globe", async (c) => {
@@ -304,6 +349,11 @@ app.get("/api/campaigns", async (c) => {
   if (error) return c.json({ error: "Failed to load campaign directory" }, 500);
 
   const rows = (data ?? []) as CampaignDirectoryRow[];
+  const slugs = rows.map(campaign => campaign.slug);
+  const { data: goalSummaryData } = slugs.length > 0
+    ? await db.rpc("campaign_goal_summaries", { p_slugs: slugs })
+    : { data: {} };
+  const goalSummaries = (goalSummaryData ?? {}) as Record<string, CampaignGoalSummaryRow[]>;
   const campaigns = rows.map(campaign => ({
     slug: campaign.slug,
     campaign_name: campaign.campaign_name,
@@ -315,12 +365,258 @@ app.get("/api/campaigns", async (c) => {
     completed_khatams: Number(campaign.completed_khatams),
     active_round_name: campaign.active_round_name,
     active_round_num: Number(campaign.active_round_num),
+    goals: (goalSummaries[campaign.slug] ?? []).map(goal => ({
+      ...goal,
+      id: Number(goal.id),
+      campaign_id: Number(goal.campaign_id),
+      target: Number(goal.target),
+      display_order: Number(goal.display_order),
+      pledged: Number(goal.pledged),
+      completed: Number(goal.completed),
+      in_progress: Number(goal.in_progress),
+      contributor_count: Number(goal.contributor_count),
+    })),
   }));
 
   return c.json({
     campaigns,
     total: rows.length > 0 ? Number(rows[0].total_matching) : 0,
   });
+});
+
+// GET /api/campaigns/:slug/goals — Campaign goal configuration and progress.
+app.get("/api/campaigns/:slug/goals", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { data: campaign, error: campaignError } = await db
+    .from("campaigns")
+    .select("id, slug, name, description, is_searchable, is_featured")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (campaignError) return c.json({ error: "Failed to load campaign" }, 500);
+  if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+
+  const { data, error } = await db.rpc("campaign_goal_summary", { p_slug: slug });
+  if (error) return c.json({ error: "Failed to load campaign goals" }, 500);
+
+  const goals = ((data ?? []) as CampaignGoalSummaryRow[]).map(goal => ({
+    ...goal,
+    id: Number(goal.id),
+    campaign_id: Number(goal.campaign_id),
+    target: Number(goal.target),
+    display_order: Number(goal.display_order),
+    pledged: Number(goal.pledged),
+    completed: Number(goal.completed),
+    in_progress: Number(goal.in_progress),
+    contributor_count: Number(goal.contributor_count),
+  }));
+
+  return c.json({ campaign, goals });
+});
+
+// GET /api/campaigns/:slug/goals/:goalId/contributions — Public contribution progress.
+app.get("/api/campaigns/:slug/goals/:goalId/contributions", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const goalId = Number(c.req.param("goalId"));
+  if (!Number.isSafeInteger(goalId) || goalId < 1) {
+    return c.json({ error: "Invalid campaign goal" }, 400);
+  }
+
+  const { data: campaign } = await db.from("campaigns").select("id").eq("slug", slug).maybeSingle();
+  if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  const { data: goal } = await db
+    .from("campaign_goals")
+    .select("id")
+    .eq("id", goalId)
+    .eq("campaign_id", campaign.id)
+    .eq("goal_type", "surah_recitation")
+    .maybeSingle();
+  if (!goal) return c.json({ error: "Surah goal not found" }, 404);
+
+  const { data, error } = await db
+    .from("recitation_contributions")
+    .select("id, participant_name, pledged_count, completed_count, created_at, updated_at")
+    .eq("goal_id", goalId)
+    .order("updated_at", { ascending: false });
+  if (error) return c.json({ error: "Failed to load contributions" }, 500);
+
+  return c.json({ contributions: data ?? [] });
+});
+
+// POST /api/campaigns/:slug/goals/:goalId/pledge — Claim Surah recitations by name.
+app.post("/api/campaigns/:slug/goals/:goalId/pledge", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const goalId = Number(c.req.param("goalId"));
+  const { name, quantity } = await c.req.json<{ name: string; quantity: number }>();
+  if (!name?.trim() || name.trim().length > 60) return c.json({ error: "A valid name is required" }, 400);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+    return c.json({ error: "Pledge quantity must be between 1 and 10,000" }, 400);
+  }
+
+  const { data: campaign } = await db.from("campaigns").select("id").eq("slug", slug).maybeSingle();
+  if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  const { data: goal } = await db
+    .from("campaign_goals")
+    .select("id")
+    .eq("id", goalId)
+    .eq("campaign_id", campaign.id)
+    .eq("goal_type", "surah_recitation")
+    .maybeSingle();
+  if (!goal) return c.json({ error: "Surah goal not found" }, 404);
+
+  const { data, error } = await db.rpc("pledge_surah_recitations", {
+    p_goal_id: goalId,
+    p_participant_name: name.trim(),
+    p_quantity: quantity,
+  });
+  if (error) {
+    const message = error.message || "Failed to save pledge";
+    if (message.includes("remain available") || message.includes("not accepting") || message.includes("between")) {
+      return c.json({ error: message }, 409);
+    }
+    return c.json({ error: "Failed to save pledge" }, 500);
+  }
+  return c.json({ ok: true, contribution: Array.isArray(data) ? data[0] : data });
+});
+
+// POST /api/campaigns/:slug/goals/:goalId/complete — Complete previously pledged recitations.
+app.post("/api/campaigns/:slug/goals/:goalId/complete", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const goalId = Number(c.req.param("goalId"));
+  const { name, quantity } = await c.req.json<{ name: string; quantity: number }>();
+  if (!name?.trim() || name.trim().length > 60) return c.json({ error: "A valid name is required" }, 400);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+    return c.json({ error: "Completion quantity must be between 1 and 10,000" }, 400);
+  }
+
+  const { data: campaign } = await db.from("campaigns").select("id").eq("slug", slug).maybeSingle();
+  if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  const { data: goal } = await db
+    .from("campaign_goals")
+    .select("id")
+    .eq("id", goalId)
+    .eq("campaign_id", campaign.id)
+    .eq("goal_type", "surah_recitation")
+    .maybeSingle();
+  if (!goal) return c.json({ error: "Surah goal not found" }, 404);
+
+  const { data, error } = await db.rpc("complete_surah_recitations", {
+    p_goal_id: goalId,
+    p_participant_name: name.trim(),
+    p_quantity: quantity,
+  });
+  if (error) {
+    const message = error.message || "Failed to complete recitations";
+    if (message.includes("pledge") || message.includes("remain incomplete") || message.includes("between")) {
+      return c.json({ error: message }, 409);
+    }
+    return c.json({ error: "Failed to complete recitations" }, 500);
+  }
+  return c.json({ ok: true, contribution: Array.isArray(data) ? data[0] : data });
+});
+
+// POST /api/campaigns/:slug/admin/goals — Add or edit an organizer-managed Surah goal.
+app.post("/api/campaigns/:slug/admin/goals", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, goal_id, surah_number, target, is_enabled = true } = await c.req.json<{
+    pin: string;
+    goal_id?: number;
+    surah_number: number;
+    target: number;
+    is_enabled?: boolean;
+  }>();
+  const { valid, campaign } = await verifyAdmin(db, slug, pin);
+  if (!valid || !campaign) return c.json({ error: "Invalid pin" }, 403);
+  if (!Number.isInteger(surah_number) || surah_number < 1 || surah_number > 114) {
+    return c.json({ error: "Surah number must be between 1 and 114" }, 400);
+  }
+  if (!Number.isInteger(target) || target < 1 || target > 1000000) {
+    return c.json({ error: "Goal target must be between 1 and 1,000,000" }, 400);
+  }
+
+  const { data: goalId, error } = await db.rpc("upsert_surah_goal", {
+    p_campaign_id: campaign.id,
+    p_goal_id: goal_id ?? null,
+    p_surah_number: surah_number,
+    p_target: target,
+    p_is_enabled: Boolean(is_enabled),
+  });
+  if (error) {
+    const message = error.message || "Failed to save Surah goal";
+    if (message.includes("already") || message.includes("lower") || message.includes("between")) {
+      return c.json({ error: message }, 409);
+    }
+    return c.json({ error: "Failed to save Surah goal" }, 500);
+  }
+  return c.json({ ok: true, goal_id: Number(goalId) }, goal_id ? 200 : 201);
+});
+
+// POST /api/campaigns/:slug/admin/goals/:goalId/enabled — Enable or archive a goal.
+app.post("/api/campaigns/:slug/admin/goals/:goalId/enabled", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const goalId = Number(c.req.param("goalId"));
+  const { pin, is_enabled } = await c.req.json<{ pin: string; is_enabled: boolean }>();
+  const { valid, campaign } = await verifyAdmin(db, slug, pin);
+  if (!valid || !campaign) return c.json({ error: "Invalid pin" }, 403);
+  if (typeof is_enabled !== "boolean") return c.json({ error: "Enabled state is required" }, 400);
+
+  const { data, error } = await db.rpc("set_campaign_goal_enabled", {
+    p_campaign_id: campaign.id,
+    p_goal_id: goalId,
+    p_is_enabled: is_enabled,
+  });
+  if (error) {
+    const message = error.message || "Failed to update goal";
+    if (message.includes("at least one") || message.includes("not found")) return c.json({ error: message }, 409);
+    return c.json({ error: "Failed to update goal" }, 500);
+  }
+  return c.json({ ok: true, is_enabled: Boolean(data) });
+});
+
+// POST /api/campaigns/:slug/admin/goals/:goalId/contributions — Correct participant totals.
+app.post("/api/campaigns/:slug/admin/goals/:goalId/contributions", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const goalId = Number(c.req.param("goalId"));
+  const { pin, name, pledged_count, completed_count } = await c.req.json<{
+    pin: string;
+    name: string;
+    pledged_count: number;
+    completed_count: number;
+  }>();
+  const { valid, campaign } = await verifyAdmin(db, slug, pin);
+  if (!valid || !campaign) return c.json({ error: "Invalid pin" }, 403);
+  if (!name?.trim() || name.trim().length > 60) return c.json({ error: "A valid name is required" }, 400);
+  if (!Number.isInteger(pledged_count) || !Number.isInteger(completed_count)) {
+    return c.json({ error: "Contribution totals must be whole numbers" }, 400);
+  }
+  const { data: goal } = await db
+    .from("campaign_goals")
+    .select("id")
+    .eq("id", goalId)
+    .eq("campaign_id", campaign.id)
+    .eq("goal_type", "surah_recitation")
+    .maybeSingle();
+  if (!goal) return c.json({ error: "Surah goal not found" }, 404);
+
+  const { error } = await db.rpc("set_surah_contribution", {
+    p_goal_id: goalId,
+    p_participant_name: name.trim(),
+    p_pledged_count: pledged_count,
+    p_completed_count: completed_count,
+  });
+  if (error) {
+    const message = error.message || "Failed to update contribution";
+    if (message.includes("exceed") || message.includes("between")) return c.json({ error: message }, 409);
+    return c.json({ error: "Failed to update contribution" }, 500);
+  }
+  return c.json({ ok: true });
 });
 
 // POST /api/khatams — Create a new khatam
@@ -399,8 +695,9 @@ app.post("/api/khatams", async (c) => {
       is_featured: false,
       goal: 1,
       is_searchable: !is_solo && (is_searchable ?? true),
+      pin_hash: pinHash,
     })
-    .select("id, slug, name, description, is_searchable, is_featured, goal")
+    .select("id, slug, name, description, is_searchable, is_featured, goal, pin_hash")
     .single();
 
   if (campaignErr || !campaign) return c.json({ error: "Failed to create campaign" }, 500);
@@ -523,10 +820,7 @@ app.post("/api/khatams/:slug/verify-pin", async (c) => {
   const slug = c.req.param("slug");
   const { pin } = await c.req.json<{ pin: string }>();
 
-  const khatam = await getLatestKhatam(db, slug);
-  if (!khatam) return c.json({ valid: false }, 404);
-
-  const valid = await verifyPin(pin, khatam.pin_hash);
+  const { valid } = await verifyAdmin(db, slug, pin);
   return c.json({ valid });
 });
 
@@ -541,6 +835,9 @@ app.post("/api/khatams/:slug/claim", async (c) => {
   const khatam = await resolveKhatam(db, slug, khatam_id);
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
+  if (!await quranGoalAcceptingClaims(db, khatam)) {
+    return c.json({ error: "This Quran goal is not accepting new claims" }, 409);
+  }
 
   const claimLimit = await resolveClaimLimit(db, slug, khatam, name.trim());
 
@@ -584,6 +881,9 @@ app.post("/api/khatams/:slug/claim-juz", async (c) => {
   const khatam = await resolveKhatam(db, slug, khatam_id);
   if (!khatam) return c.json({ error: "Khatam not found" }, 404);
   if (khatam.is_solo) return c.json({ error: "Use solo-toggle for solo khatams" }, 400);
+  if (!await quranGoalAcceptingClaims(db, khatam)) {
+    return c.json({ error: "This Quran goal is not accepting new claims" }, 409);
+  }
 
   const claimLimit = await resolveClaimLimit(db, slug, khatam, name.trim());
 
@@ -841,6 +1141,9 @@ app.delete("/api/khatams/:slug/solo/delete", async (c) => {
     p_khatam_id: khatam.id,
   });
 
+  if (error?.message.includes("Archive the Quran goal")) {
+    return c.json({ error: error.message }, 409);
+  }
   if (error || !deleted) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });
@@ -997,8 +1300,9 @@ app.post("/api/khatams/:slug/admin/campaign", async (c) => {
         is_featured: false,
         goal: 1,
         is_searchable: is_searchable ?? false,
+        pin_hash: khatam.pin_hash,
       })
-      .select("id, slug, name, description, is_searchable, is_featured, goal")
+      .select("id, slug, name, description, is_searchable, is_featured, goal, pin_hash")
       .single();
 
     if (error || !data) return c.json({ error: "Failed to create campaign details" }, 500);
@@ -1013,7 +1317,7 @@ app.post("/api/khatams/:slug/admin/campaign", async (c) => {
         is_searchable: is_searchable ?? campaign.is_searchable,
       })
       .eq("id", campaign.id)
-      .select("id, slug, name, description, is_searchable, is_featured, goal")
+      .select("id, slug, name, description, is_searchable, is_featured, goal, pin_hash")
       .single();
 
     if (error || !data) return c.json({ error: "Failed to update campaign details" }, 500);
@@ -1548,6 +1852,9 @@ app.delete("/api/khatams/:slug/admin/delete", async (c) => {
     p_khatam_id: khatam.id,
   });
 
+  if (error?.message.includes("Archive the Quran goal")) {
+    return c.json({ error: error.message }, 409);
+  }
   if (error || !deleted) return c.json({ error: "Failed to delete" }, 500);
 
   return c.json({ ok: true });

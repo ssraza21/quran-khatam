@@ -15,7 +15,8 @@ import {
   X,
 } from "lucide-react";
 import type { ParticipantInfo } from "@/lib/api";
-import type { ParticipationMode } from "@/lib/types";
+import type { CampaignGoal, ParticipationMode } from "@/lib/types";
+import SurahGoalsAdmin from "@/components/khatam/SurahGoalsAdmin";
 
 interface CreateKhatamsOptions {
   count: number;
@@ -34,6 +35,7 @@ interface AdminSettingsPanelProps {
   campaignName: string;
   campaignDescription: string | null;
   campaignSearchable: boolean;
+  campaignGoals: CampaignGoal[];
   currentKhatamCount: number;
   currentKhatamName: string;
   participationMode: ParticipationMode;
@@ -45,6 +47,13 @@ interface AdminSettingsPanelProps {
   onSetParticipantLimit: (name: string, limit: number | null) => Promise<void>;
   onSaveClaimLimit: () => Promise<void>;
   onSaveCampaign: (name: string, description: string, isSearchable: boolean) => Promise<void>;
+  onSaveSurahGoal: (options: {
+    goalId?: number;
+    surahNumber: number;
+    target: number;
+    isEnabled?: boolean;
+  }) => Promise<boolean>;
+  onSetCampaignGoalEnabled: (goalId: number, isEnabled: boolean) => Promise<boolean>;
   onCreateKhatams: (options: CreateKhatamsOptions) => Promise<boolean>;
   onRenameKhatam: (name: string) => Promise<void>;
   onSetParticipationMode: (mode: ParticipationMode) => Promise<void>;
@@ -142,6 +151,7 @@ export default function AdminSettingsPanel({
   campaignName,
   campaignDescription,
   campaignSearchable,
+  campaignGoals,
   currentKhatamCount,
   currentKhatamName,
   participationMode,
@@ -153,6 +163,8 @@ export default function AdminSettingsPanel({
   onSetParticipantLimit,
   onSaveClaimLimit,
   onSaveCampaign,
+  onSaveSurahGoal,
+  onSetCampaignGoalEnabled,
   onCreateKhatams,
   onRenameKhatam,
   onSetParticipationMode,
@@ -266,6 +278,12 @@ export default function AdminSettingsPanel({
             )}
           </div>
         </section>
+
+        <SurahGoalsAdmin
+          goals={campaignGoals}
+          onSave={onSaveSurahGoal}
+          onSetEnabled={onSetCampaignGoalEnabled}
+        />
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-2">

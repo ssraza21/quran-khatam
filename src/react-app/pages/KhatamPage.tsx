@@ -66,7 +66,7 @@ export default function KhatamPage() {
     khatamName, campaignName, campaignDescription, campaignGoal,
     slots, khatamNum, khatams, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
-    isSolo, adminMode,
+    isSolo, adminMode, quranGoalEnabled,
     newKhatamName, setNewKhatamName,
     done, prog, rem, pct, khatmComplete,
     getSlot, onBook, onBookJuz, onComplete, onCompleteJuz, onSoloToggle,
@@ -205,6 +205,11 @@ export default function KhatamPage() {
       {/* Stats Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-16 z-40 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-5 py-4">
+          {!quranGoalEnabled && !isSolo && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              This Quran goal is archived. Existing participants can finish claimed portions, but new claims are closed.
+            </div>
+          )}
           {khatmComplete && (
             <div className="rounded-xl p-5 mb-4 text-center text-white animate-pulse"
               style={{ background: "linear-gradient(135deg, #5A0000, #8B0000)" }}>

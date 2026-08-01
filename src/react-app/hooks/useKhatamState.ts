@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import type { ParticipationMode, Slot, StatusKey } from "@/lib/types";
+import type { CampaignGoal, ParticipationMode, Slot, StatusKey } from "@/lib/types";
 import { Q_SHORT, COLORS } from "@/lib/constants";
 import { supabasePublic } from "@/lib/supabase";
 import { api, type ParticipantInfo } from "@/lib/api";
@@ -65,6 +65,7 @@ function getPreferredKhatam(khatams: KhatamInfo[]) {
 export function useKhatamState(slug: string) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [khatams, setKhatams] = useState<KhatamInfo[]>([]);
+  const [campaignGoals, setCampaignGoals] = useState<CampaignGoal[]>([]);
   const [selectedKhatamId, setSelectedKhatamId] = useState<number | null>(null);
   const [khatamNum, setKhatamNum] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -124,6 +125,17 @@ export function useKhatamState(slug: string) {
     return khatamInfos;
   }, [slug]);
 
+  const loadCampaignGoals = useCallback(async (): Promise<CampaignGoal[]> => {
+    try {
+      const { goals } = await api.getCampaignGoals(slug);
+      setCampaignGoals(goals);
+      return goals;
+    } catch {
+      setCampaignGoals([]);
+      return [];
+    }
+  }, [slug]);
+
   // Load slots for a specific khatam
   const loadSlots = useCallback(async (khatamId: number) => {
     const { data: dbSlots, error } = await supabasePublic
@@ -151,7 +163,7 @@ export function useKhatamState(slug: string) {
         setAdminMode(false);
         setAdminPin("");
       }
-      const infos = await loadKhatams();
+      const [infos] = await Promise.all([loadKhatams(), loadCampaignGoals()]);
       if (infos.length > 0) {
         const storedId = localStorage.getItem(`selectedKhatamId:${slug}`);
         const remembered = storedId ? infos.find(k => k.id === Number(storedId)) : null;
@@ -168,7 +180,7 @@ export function useKhatamState(slug: string) {
       }
       setLoading(false);
     })();
-  }, [slug, loadKhatams, loadSlots]);
+  }, [slug, loadCampaignGoals, loadKhatams, loadSlots]);
 
   // When user switches khatam
   const selectKhatam = useCallback(async (khatamId: number) => {
@@ -219,6 +231,7 @@ export function useKhatamState(slug: string) {
   const khatmComplete = slots.length > 0 && done === 120;
 
   const claimLimit = khatams.find(k => k.id === selectedKhatamId)?.claim_limit ?? 8;
+  const quranGoalEnabled = campaignGoals.find(goal => goal.goal_type === "quran_khatam")?.is_enabled ?? true;
 
   const getClaimLimitForName = useCallback((name: string) => {
     const override = participants.find(p => p.name.toLowerCase() === name.toLowerCase())?.claim_limit;
@@ -226,6 +239,7 @@ export function useKhatamState(slug: string) {
   }, [participants, claimLimit]);
 
   const onBook = async (juz: number, q: number, name: string): Promise<{ err: string } | undefined> => {
+    if (!quranGoalEnabled) return { err: "This Quran goal is not accepting new claims." };
     const slot = getSlot(juz, q);
     if (slot.status !== "av") return { err: "This quarter was just claimed. Please choose another." };
     const limit = getClaimLimitForName(name);
@@ -250,6 +264,7 @@ export function useKhatamState(slug: string) {
   };
 
   const onBookJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
+    if (!quranGoalEnabled) return { err: "This Quran goal is not accepting new claims." };
     const juzSlots = slots.filter(s => s.juz === juz);
     if (juzSlots.some(s => s.status !== "av")) return { err: "Some quarters in this Juz are no longer available." };
     const limit = getClaimLimitForName(name);
@@ -546,6 +561,40 @@ export function useKhatamState(slug: string) {
       await loadKhatams();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Failed to update campaign details"));
+    }
+  };
+
+  const adminSaveSurahGoal = async (options: {
+    goalId?: number;
+    surahNumber: number;
+    target: number;
+    isEnabled?: boolean;
+  }): Promise<boolean> => {
+    if (!adminMode) return false;
+    try {
+      await api.adminSaveSurahGoal(slug, adminPin, options);
+      toast.success(options.goalId ? "Surah goal updated" : "Surah goal added");
+      await loadCampaignGoals();
+      return true;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to save Surah goal"));
+      return false;
+    }
+  };
+
+  const adminSetCampaignGoalEnabled = async (
+    goalId: number,
+    isEnabled: boolean,
+  ): Promise<boolean> => {
+    if (!adminMode) return false;
+    try {
+      await api.adminSetCampaignGoalEnabled(slug, adminPin, goalId, isEnabled);
+      toast.success(isEnabled ? "Campaign goal enabled" : "Campaign goal archived");
+      await loadCampaignGoals();
+      return true;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update campaign goal"));
+      return false;
     }
   };
 
@@ -868,9 +917,9 @@ export function useKhatamState(slug: string) {
   return {
     slug, slots, khatamNum, khatamName, campaignName, campaignDescription, campaignSearchable,
     campaignGoal, participationMode,
-    khatams, selectedKhatamId, isLatestKhatam,
+    khatams, campaignGoals, selectedKhatamId, isLatestKhatam,
     loading, notFound, modal, setModal,
-    isSolo,
+    isSolo, quranGoalEnabled,
     claimLimit,
     showNamesOnGlobe: selectedKhatamInfo?.show_names_on_globe ?? true,
     locationCountry: selectedKhatamInfo?.location_country ?? null,
@@ -887,7 +936,8 @@ export function useKhatamState(slug: string) {
     tryAdmin, adminSetStatus, adminAssignJuz, deactivateAdmin,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
-    adminSaveClaimLimit, adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
+    adminSaveClaimLimit, adminUpdateCampaign, adminSaveSurahGoal, adminSetCampaignGoalEnabled,
+    adminAssignEntireQuran, adminBulkCreateRounds,
     adminCompleteEntireKhatam, adminCreateCampaignKhatams, adminReorderKhatams,
     adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminRecordCompletedKhatam,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,

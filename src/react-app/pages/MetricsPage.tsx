@@ -4,6 +4,8 @@ import type { Slot, StatusKey } from "@/lib/types";
 import { JUZ_NAMES, COLORS } from "@/lib/constants";
 import { supabasePublic } from "@/lib/supabase";
 import { api } from "@/lib/api";
+import { getSurahName } from "@/lib/surahs";
+import type { CampaignGoal } from "@/lib/types";
 
 function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; size?: number; stroke?: number }) {
   const radius = (size - stroke) / 2;
@@ -68,6 +70,7 @@ export default function MetricsPage() {
   const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
   const [khatamName, setKhatamName] = useState("");
   const [campaignName, setCampaignName] = useState("");
+  const [campaignGoals, setCampaignGoals] = useState<CampaignGoal[]>([]);
   const [notFound, setNotFound] = useState(false);
 
   const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
@@ -112,6 +115,17 @@ export default function MetricsPage() {
 
   useEffect(() => { loadKhatams(); }, [loadKhatams]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
+  useEffect(() => {
+    if (!slug) return;
+    const loadGoals = () => api.getCampaignGoals(slug).then(result => setCampaignGoals(result.goals)).catch(() => {});
+    void loadGoals();
+    const channel = supabasePublic
+      .channel(`metrics-campaign-goals-${slug}`)
+      .on("postgres_changes", { event: "*", schema: "khatam_public", table: "campaign_goals" }, loadGoals)
+      .on("postgres_changes", { event: "*", schema: "khatam_public", table: "recitation_contributions" }, loadGoals)
+      .subscribe();
+    return () => { void supabasePublic.removeChannel(channel); };
+  }, [slug]);
 
   // Realtime: refresh the khatam list
   useEffect(() => {
@@ -313,6 +327,17 @@ export default function MetricsPage() {
 
       {/* Main Content */}
       <div className="max-w-[1200px] mx-auto px-5 py-8">
+        {campaignGoals.some(goal => goal.goal_type === "surah_recitation" && goal.is_enabled) && (
+          <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="flex items-end justify-between gap-3"><div><p className="text-[11px] font-medium uppercase tracking-[3px] text-gray-400">Surah goals</p><h2 className="mt-1 text-xl font-semibold text-gray-900">Campaign-wide recitations</h2></div><Link to={`/k/${slug}`} className="text-xs font-semibold text-[#8B0000] hover:underline">Campaign overview</Link></div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {campaignGoals.filter(goal => goal.goal_type === "surah_recitation" && goal.is_enabled).map(goal => {
+                const goalPct = Math.min(100, Math.round(goal.completed / goal.target * 100));
+                return <Link key={goal.id} to={`/k/${slug}/goals/${goal.id}`} className="rounded-xl border border-gray-200 p-4 transition-colors hover:border-[#8B0000]/30 hover:bg-[#FFF9F7]"><p className="text-sm font-semibold text-gray-900">Surah {getSurahName(goal.surah_number)}</p><p className="mt-1 text-xs text-gray-400">{goal.completed.toLocaleString()} of {goal.target.toLocaleString()} complete</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#8B0000]" style={{ width: `${goalPct}%` }} /></div><p className="mt-2 text-right text-[10px] font-medium text-gray-400">{goalPct}%</p></Link>;
+              })}
+            </div>
+          </section>
+        )}
         <div className="grid grid-cols-12 gap-5">
 
           {/* Circular Progress Card */}

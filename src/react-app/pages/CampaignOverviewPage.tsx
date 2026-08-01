@@ -9,9 +9,12 @@ import {
   Clock3,
   Search,
   Shield,
+  Target,
   Users,
 } from "lucide-react";
 import { api, type KhatamMeta } from "@/lib/api";
+import { getSurahName } from "@/lib/surahs";
+import type { CampaignGoal } from "@/lib/types";
 
 function roundPriority(khatam: KhatamMeta) {
   const done = khatam.done ?? 0;
@@ -80,15 +83,17 @@ export default function CampaignOverviewPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const [khatams, setKhatams] = useState<KhatamMeta[]>([]);
+  const [goals, setGoals] = useState<CampaignGoal[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
-    api.getHistory(slug)
-      .then(history => {
+    Promise.all([api.getHistory(slug), api.getCampaignGoals(slug)])
+      .then(([history, goalResult]) => {
         setKhatams(history);
+        setGoals(goalResult.goals);
         setNotFound(history.length === 0);
       })
       .catch(() => setNotFound(true))
@@ -106,6 +111,10 @@ export default function CampaignOverviewPage() {
 
   const openKhatams = sorted.filter(khatam => (khatam.participation_mode ?? "open") === "open");
   const groupKhatams = sorted.filter(khatam => khatam.participation_mode === "group");
+  const quranGoal = goals.find(goal => goal.goal_type === "quran_khatam");
+  const surahGoals = goals.filter(goal => goal.goal_type === "surah_recitation" && goal.is_enabled);
+  const quranEnabled = quranGoal?.is_enabled ?? true;
+  const enabledGoalCount = goals.filter(goal => goal.is_enabled).length;
   const campaign = khatams[0];
   const completed = khatams.filter(khatam => (khatam.done ?? 0) === (khatam.total ?? 120)).length;
   const active = khatams.filter(khatam => khatam.started && (khatam.done ?? 0) < (khatam.total ?? 120)).length;
@@ -182,15 +191,15 @@ export default function CampaignOverviewPage() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/15 pt-5 text-sm text-white/70">
-            <span><strong className="text-xl text-white">{khatams.length}</strong> total</span>
-            <span><strong className="text-xl text-white">{active}</strong> in progress</span>
-            <span><strong className="text-xl text-white">{completed}</strong> complete</span>
+            <span><strong className="text-xl text-white">{enabledGoalCount}</strong> goal{enabledGoalCount === 1 ? "" : "s"}</span>
+            {quranEnabled && <span><strong className="text-xl text-white">{active}</strong> Khatams in progress</span>}
+            {quranEnabled && <span><strong className="text-xl text-white">{completed}</strong> Khatams complete</span>}
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1100px] px-5 py-8">
-        <label className="flex max-w-xl items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 shadow-sm focus-within:border-[#8B0000]/50">
+        {quranEnabled && <label className="flex max-w-xl items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 shadow-sm focus-within:border-[#8B0000]/50">
           <Search size={17} className="shrink-0 text-[#8B0000]" />
           <input
             value={query}
@@ -198,12 +207,38 @@ export default function CampaignOverviewPage() {
             placeholder="Search a family, institution, or Khatam number"
             className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm text-gray-800 outline-none"
           />
-        </label>
-        <p className="mt-2 text-xs text-gray-400">
+        </label>}
+        {quranEnabled && <p className="mt-2 text-xs text-gray-400">
           Khatams with unfinished portions appear first.
-        </p>
+        </p>}
 
-        <section className="mt-9">
+        {surahGoals.length > 0 && (
+          <section className="mt-9">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-[#8B0000]"><Target size={17} /><p className="text-xs font-semibold uppercase tracking-[0.16em]">Surah recitations</p></div>
+                <h2 className="mt-1 text-2xl font-semibold text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>Collective Surah goals</h2>
+                <p className="mt-1 text-sm text-gray-500">Pledge a number of recitations, then return to mark them complete.</p>
+              </div>
+              <span className="text-xs font-medium text-gray-400">{surahGoals.length}</span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {surahGoals.map(goal => {
+                const pct = goal.target > 0 ? Math.min(100, Math.round((goal.completed / goal.target) * 100)) : 0;
+                return (
+                  <Link key={goal.id} to={`/k/${slug}/goals/${goal.id}`} className="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#8B0000]/25 hover:shadow-md">
+                    <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">Surah {goal.surah_number}</p><h3 className="mt-1 text-xl font-semibold text-gray-900 group-hover:text-[#8B0000]">{getSurahName(goal.surah_number)}</h3></div><BookOpen size={20} className="text-[#8B0000]" /></div>
+                    <div className="mt-5 flex items-end justify-between gap-4"><p className="text-sm text-gray-500"><strong className="text-2xl text-[#8B0000]">{goal.completed.toLocaleString()}</strong> of {goal.target.toLocaleString()} complete</p><span className="text-xs font-semibold text-[#8B0000]">Open <ArrowRight size={13} className="inline" /></span></div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#8B0000]" style={{ width: `${pct}%` }} /></div>
+                    <p className="mt-2 text-[10px] text-gray-400">{goal.in_progress.toLocaleString()} currently pledged · {goal.contributor_count} participants</p>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {quranEnabled && <section className="mt-9">
           <div className="flex items-end justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-[#8B0000]">
@@ -225,9 +260,9 @@ export default function CampaignOverviewPage() {
               No open-participation Khatams match this search.
             </p>
           )}
-        </section>
+        </section>}
 
-        <section className="mt-12">
+        {quranEnabled && <section className="mt-12">
           <div className="flex items-end justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-[#8B0000]">
@@ -249,7 +284,7 @@ export default function CampaignOverviewPage() {
               {query ? "No group Khatams match this search." : "No family or institution Khatams have been added yet."}
             </p>
           )}
-        </section>
+        </section>}
       </main>
     </div>
   );

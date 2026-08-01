@@ -1,4 +1,9 @@
-import type { GlobeData, ParticipationMode } from "@/lib/types";
+import type {
+  CampaignGoal,
+  GlobeData,
+  ParticipationMode,
+  RecitationContribution,
+} from "@/lib/types";
 
 const BASE = "/api";
 
@@ -69,6 +74,7 @@ export interface CampaignDirectoryItem {
   completed_khatams: number;
   active_round_name: string;
   active_round_num: number;
+  goals: CampaignGoal[];
 }
 
 export const api = {
@@ -119,6 +125,94 @@ export const api = {
     });
     return request<{ campaigns: CampaignDirectoryItem[]; total: number }>(
       `/campaigns?${params.toString()}`
+    );
+  },
+
+  getCampaignGoals(slug: string) {
+    return request<{
+      campaign: {
+        id: number;
+        slug: string;
+        name: string;
+        description: string | null;
+        is_searchable: boolean;
+        is_featured: boolean;
+      };
+      goals: CampaignGoal[];
+    }>(`/campaigns/${slug}/goals`);
+  },
+
+  getSurahContributions(slug: string, goalId: number) {
+    return request<{ contributions: RecitationContribution[] }>(
+      `/campaigns/${slug}/goals/${goalId}/contributions`,
+    );
+  },
+
+  pledgeSurahRecitations(slug: string, goalId: number, name: string, quantity: number) {
+    return request<{ ok: boolean }>(`/campaigns/${slug}/goals/${goalId}/pledge`, {
+      method: "POST",
+      body: JSON.stringify({ name, quantity }),
+    });
+  },
+
+  completeSurahRecitations(slug: string, goalId: number, name: string, quantity: number) {
+    return request<{ ok: boolean }>(`/campaigns/${slug}/goals/${goalId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ name, quantity }),
+    });
+  },
+
+  adminSaveSurahGoal(
+    slug: string,
+    pin: string,
+    options: {
+      goalId?: number;
+      surahNumber: number;
+      target: number;
+      isEnabled?: boolean;
+    },
+  ) {
+    return request<{ ok: boolean; goal_id: number }>(`/campaigns/${slug}/admin/goals`, {
+      method: "POST",
+      body: JSON.stringify({
+        pin,
+        goal_id: options.goalId,
+        surah_number: options.surahNumber,
+        target: options.target,
+        is_enabled: options.isEnabled ?? true,
+      }),
+    });
+  },
+
+  adminSetCampaignGoalEnabled(slug: string, pin: string, goalId: number, isEnabled: boolean) {
+    return request<{ ok: boolean; is_enabled: boolean }>(
+      `/campaigns/${slug}/admin/goals/${goalId}/enabled`,
+      {
+        method: "POST",
+        body: JSON.stringify({ pin, is_enabled: isEnabled }),
+      },
+    );
+  },
+
+  adminSetSurahContribution(
+    slug: string,
+    pin: string,
+    goalId: number,
+    name: string,
+    pledgedCount: number,
+    completedCount: number,
+  ) {
+    return request<{ ok: boolean }>(
+      `/campaigns/${slug}/admin/goals/${goalId}/contributions`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          pin,
+          name,
+          pledged_count: pledgedCount,
+          completed_count: completedCount,
+        }),
+      },
     );
   },
 

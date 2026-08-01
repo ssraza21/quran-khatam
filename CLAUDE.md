@@ -124,6 +124,13 @@ Unique constraint: `(slug, khatam_num)`.
 
 Unique constraint: `(khatam_id, juz, q)`. Total slots per khatam: **120**.
 
+### Campaign goals and Surah contributions
+
+- `campaign_goals` lets one campaign contain its existing Quran Khatam goal plus multiple Surah recitation goals.
+- `recitation_contributions` stores each participant's pledged and completed quantities for a Surah goal.
+- Organizers configure goals through PIN-protected Worker endpoints. Public writes also go through the Worker and atomic PostgreSQL functions.
+- Existing campaigns are backfilled with one `quran_khatam` goal; existing Khatam rows and 120-slot trackers remain unchanged.
+
 ### RLS Policy
 - **Anonymous role**: SELECT only (frontend uses anon key)
 - **Service role**: ALL (Worker uses service key)

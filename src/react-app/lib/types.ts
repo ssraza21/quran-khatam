@@ -1,5 +1,32 @@
 export type StatusKey = "av" | "cl" | "dn";
 export type ParticipationMode = "open" | "group";
+export type CampaignGoalType = "quran_khatam" | "surah_recitation";
+
+export interface CampaignGoal {
+  id: number;
+  campaign_id: number;
+  goal_type: CampaignGoalType;
+  surah_number: number | null;
+  target: number;
+  display_order: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  pledged: number;
+  completed: number;
+  in_progress: number;
+  contributor_count: number;
+}
+
+export interface RecitationContribution {
+  id: number;
+  participant_name: string;
+  pledged_count: number;
+  completed_count: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Slot {
   juz: number;

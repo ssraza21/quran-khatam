@@ -17,6 +17,7 @@ A web app for coordinating community Quran recitation circles (_khatams_). Parti
 - Create a khatam with a URL slug and admin PIN
 - 120-slot grid (30 Juz × 4 quarters) with live status updates via Supabase Realtime
 - Public campaign directory with search, goals, and live in-progress/completed counts
+- Multiple organizer-managed Surah goals per campaign, with quantity pledges and completion tracking
 - Bulk campaign setup for creating up to 100 khatam rounds per action
 - Claim up to 8 slots; mark them complete when done
 - Auto-detects khatam completion; admin can start the next one

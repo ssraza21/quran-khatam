@@ -19,7 +19,7 @@ export default function AdminPage() {
   const {
     khatamName, campaignName, campaignDescription, campaignSearchable,
     participationMode,
-    slots, khatamNum, khatams, selectedKhatamId,
+    slots, khatamNum, khatams, campaignGoals, selectedKhatamId,
     loading, notFound, isSolo,
     claimLimit, showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
@@ -32,7 +32,8 @@ export default function AdminPage() {
     adminSetStatus, adminAssignJuz,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames, adminSaveClaimLimit,
-    adminUpdateCampaign, adminCompleteEntireKhatam, adminCreateCampaignKhatams,
+    adminUpdateCampaign, adminSaveSurahGoal, adminSetCampaignGoalEnabled,
+    adminCompleteEntireKhatam, adminCreateCampaignKhatams,
     adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminReorderKhatams,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
   } = state;
@@ -284,6 +285,7 @@ export default function AdminPage() {
                   campaignName={campaignName}
                   campaignDescription={campaignDescription}
                   campaignSearchable={campaignSearchable}
+                  campaignGoals={campaignGoals}
                   currentKhatamCount={khatams.length}
                   currentKhatamName={khatamName}
                   participationMode={participationMode}
@@ -295,6 +297,8 @@ export default function AdminPage() {
                   onSetParticipantLimit={adminSetParticipantLimit}
                   onSaveClaimLimit={adminSaveClaimLimit}
                   onSaveCampaign={adminUpdateCampaign}
+                  onSaveSurahGoal={adminSaveSurahGoal}
+                  onSetCampaignGoalEnabled={adminSetCampaignGoalEnabled}
                   onCreateKhatams={adminCreateCampaignKhatams}
                   onRenameKhatam={adminRenameKhatam}
                   onSetParticipationMode={adminSetParticipationMode}
