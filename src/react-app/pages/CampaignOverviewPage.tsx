@@ -38,48 +38,39 @@ function KhatamCard({
     <button
       type="button"
       onClick={() => onOpen(khatam)}
-      className="group flex min-h-[172px] flex-col border-t border-gray-200 py-5 text-left transition-colors hover:bg-[#FFF9F7] sm:px-4"
+      className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 text-left transition-all hover:border-[#8B0000]/25 hover:bg-[#FFF9F7] focus-visible:ring-2 focus-visible:ring-[#8B0000]/25 sm:grid-cols-[auto_minmax(10rem,1fr)_minmax(10rem,0.8fr)_auto] sm:px-4"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
-            Khatam {khatam.khatam_num}
-          </p>
-          <h3
-            className="mt-1 truncate text-lg font-semibold text-gray-900 transition-colors group-hover:text-[#8B0000]"
-            style={{ fontFamily: "'Playfair Display', serif" }}
-          >
-            {khatam.name || `Khatam ${khatam.khatam_num}`}
-          </h3>
-        </div>
-        <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-            complete
-              ? "bg-green-50 text-green-700"
-              : inProgress
-                ? "bg-amber-50 text-amber-700"
-                : "bg-gray-100 text-gray-500"
-          }`}
-        >
-          {complete ? <CheckCircle2 size={11} /> : inProgress ? <Clock3 size={11} /> : <BookOpen size={11} />}
-          {complete ? "Complete" : inProgress ? "In progress" : "Ready"}
-        </span>
+      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+        complete ? "bg-green-50 text-green-700" : inProgress ? "bg-amber-50 text-amber-700" : "bg-[#FFF5F5] text-[#8B0000]"
+      }`}>
+        {complete ? <CheckCircle2 size={16} /> : inProgress ? <Clock3 size={16} /> : <BookOpen size={16} />}
       </div>
 
-      <div className="mt-auto pt-5">
-        <div className="mb-1.5 flex items-center justify-between text-[11px] text-gray-400">
-          <span>{done} of {total} quarters complete</span>
-          <span>{pct}%</span>
-        </div>
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-gray-400">Khatam {khatam.khatam_num}</p>
+        <h3 className="truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#8B0000]">
+          {khatam.name || `Khatam ${khatam.khatam_num}`}
+        </h3>
+      </div>
+
+      <div className="col-span-3 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:col-span-1">
         <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
           <div
             className={`h-full rounded-full ${complete ? "bg-green-600" : "bg-[#8B0000]"}`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#8B0000]">
-          Open Khatam <ArrowRight size={13} />
+        <span className="text-[10px] font-medium tabular-nums text-gray-400">{pct}%</span>
+        <span className="col-span-2 text-[10px] text-gray-400">{done} of {total} quarters complete</span>
+      </div>
+
+      <div className="col-start-3 row-start-1 flex items-center gap-2 sm:col-start-4">
+        <span className={`hidden text-[10px] font-semibold sm:inline ${
+          complete ? "text-green-700" : inProgress ? "text-amber-700" : "text-gray-500"
+        }`}>
+          {complete ? "Complete" : inProgress ? "In progress" : "Ready"}
         </span>
+        <ArrowRight size={14} className="text-[#8B0000] transition-transform group-hover:translate-x-0.5" />
       </div>
     </button>
   );
@@ -204,7 +195,7 @@ export default function CampaignOverviewPage() {
           <input
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder="Search Qalam, a family, institution, or Khatam number"
+            placeholder="Search a family, institution, or Khatam number"
             className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm text-gray-800 outline-none"
           />
         </label>
@@ -226,7 +217,7 @@ export default function CampaignOverviewPage() {
             </div>
             <span className="text-xs font-medium text-gray-400">{openKhatams.length}</span>
           </div>
-          <div className="mt-4 grid gap-x-8 sm:grid-cols-2">
+          <div className="mt-4 space-y-2">
             {openKhatams.map(khatam => <KhatamCard key={khatam.id} khatam={khatam} onOpen={openTracker} />)}
           </div>
           {openKhatams.length === 0 && (
@@ -250,7 +241,7 @@ export default function CampaignOverviewPage() {
             </div>
             <span className="text-xs font-medium text-gray-400">{groupKhatams.length}</span>
           </div>
-          <div className="mt-4 grid gap-x-8 sm:grid-cols-2">
+          <div className="mt-4 space-y-2">
             {groupKhatams.map(khatam => <KhatamCard key={khatam.id} khatam={khatam} onOpen={openTracker} />)}
           </div>
           {groupKhatams.length === 0 && (

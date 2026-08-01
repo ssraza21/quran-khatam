@@ -17,7 +17,7 @@ export default function AdminPage() {
 
   const state = useKhatamState(slug ?? "");
   const {
-    khatamName, campaignName, campaignDescription, campaignSearchable, campaignGoal,
+    khatamName, campaignName, campaignDescription, campaignSearchable,
     participationMode,
     slots, khatamNum, khatams, selectedKhatamId,
     loading, notFound, isSolo,
@@ -25,7 +25,6 @@ export default function AdminPage() {
     adminMode, adminSelected, setAdminSelected,
     adminDrawer, setAdminDrawer,
     adminPin, setAdminPin, adminErr,
-    newKhatamName, setNewKhatamName,
     participants, claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete, isLatestKhatam,
     selectKhatam,
@@ -33,10 +32,9 @@ export default function AdminPage() {
     adminSetStatus, adminAssignJuz,
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames, adminSaveClaimLimit,
-    adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
-    adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminRecordCompletedKhatam,
+    adminUpdateCampaign, adminCompleteEntireKhatam, adminCreateCampaignKhatams,
+    adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminReorderKhatams,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
-    startNewKhatam,
   } = state;
 
   if (notFound) {
@@ -158,7 +156,12 @@ export default function AdminPage() {
         </div>
       ) : (
         <>
-          <KhatamSelector khatams={khatams} selectedId={selectedKhatamId} onSelect={selectKhatam} />
+          <KhatamSelector
+            khatams={khatams}
+            selectedId={selectedKhatamId}
+            onSelect={selectKhatam}
+            onReorder={adminReorderKhatams}
+          />
 
           {/* Stats strip */}
           <div className="bg-white border-b border-gray-200">
@@ -169,10 +172,10 @@ export default function AdminPage() {
                   <p className="text-sm font-medium mb-2">Alhamdulillah — this khatam is complete!</p>
                   <button
                     type="button"
-                    onClick={startNewKhatam}
+                    onClick={() => setTab("campaign")}
                     className="bg-white text-[#8B0000] px-5 py-2 rounded-full text-sm font-semibold hover:bg-gray-100 transition-colors"
                   >
-                    Begin Khatam {khatamNum + 1}
+                    Add another Khatam
                   </button>
                 </div>
               )}
@@ -278,16 +281,13 @@ export default function AdminPage() {
                   claimLimit={claimLimit}
                   claimLimitInput={claimLimitInput}
                   setClaimLimitInput={setClaimLimitInput}
-                  newKhatamName={newKhatamName}
-                  setNewKhatamName={setNewKhatamName}
                   campaignName={campaignName}
                   campaignDescription={campaignDescription}
                   campaignSearchable={campaignSearchable}
-                  campaignGoal={campaignGoal}
                   currentKhatamCount={khatams.length}
                   currentKhatamName={khatamName}
                   participationMode={participationMode}
-                  canAssignEntireQuran={rem === 120}
+                  isKhatamComplete={khatmComplete}
                   locationCountry={locationCountry}
                   showNamesOnGlobe={showNamesOnGlobe}
                   onAddParticipant={adminAddParticipant}
@@ -295,13 +295,11 @@ export default function AdminPage() {
                   onSetParticipantLimit={adminSetParticipantLimit}
                   onSaveClaimLimit={adminSaveClaimLimit}
                   onSaveCampaign={adminUpdateCampaign}
-                  onAssignEntireQuran={adminAssignEntireQuran}
-                  onBulkCreateRounds={adminBulkCreateRounds}
+                  onCreateKhatams={adminCreateCampaignKhatams}
                   onRenameKhatam={adminRenameKhatam}
                   onSetParticipationMode={adminSetParticipationMode}
                   onDuplicateKhatam={adminDuplicateKhatam}
-                  onRecordCompletedKhatam={adminRecordCompletedKhatam}
-                  onStartNewKhatam={startNewKhatam}
+                  onCompleteEntireKhatam={adminCompleteEntireKhatam}
                   onToggleGlobeNames={adminToggleGlobeNames}
                   onResetAll={adminResetAllToAvailable}
                   onDeleteKhatam={adminDeleteKhatam}

@@ -24,6 +24,7 @@ export interface KhatamMeta {
   slug: string;
   name: string;
   khatam_num: number;
+  display_order?: number;
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
@@ -212,6 +213,47 @@ export const api = {
     return request<{ ok: boolean; assigned: number }>(`/khatams/${slug}/admin/assign-all`, {
       method: "POST",
       body: JSON.stringify({ pin, name, khatam_id: khatamId }),
+    });
+  },
+
+  adminCompleteAll(slug: string, pin: string, khatamId: number) {
+    return request<{ ok: boolean; completed: number }>(`/khatams/${slug}/admin/complete-all`, {
+      method: "POST",
+      body: JSON.stringify({ pin, khatam_id: khatamId }),
+    });
+  },
+
+  adminCreateKhatams(
+    slug: string,
+    pin: string,
+    options: {
+      count: number;
+      name?: string;
+      namePrefix?: string;
+      participationMode: ParticipationMode;
+      completed: boolean;
+    },
+  ) {
+    return request<{ ok: boolean; created: number; ids: number[] }>(
+      `/khatams/${slug}/admin/create-khatams`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          pin,
+          count: options.count,
+          name: options.name,
+          name_prefix: options.namePrefix,
+          participation_mode: options.participationMode,
+          completed: options.completed,
+        }),
+      },
+    );
+  },
+
+  adminReorderKhatams(slug: string, pin: string, orderedIds: number[]) {
+    return request<{ ok: boolean; reordered: number }>(`/khatams/${slug}/admin/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ pin, ordered_ids: orderedIds }),
     });
   },
 

@@ -125,6 +125,7 @@ type KhatamHistoryRow = {
   slug: string;
   name: string | null;
   khatam_num: number;
+  display_order: number;
   created_at: string;
   completed_at: string | null;
   is_solo: boolean;
@@ -421,6 +422,7 @@ app.post("/api/khatams", async (c) => {
       name: roundName,
       pin_hash: pinHash,
       khatam_num: 1,
+      display_order: 1,
       is_solo,
       campaign_id: campaign.id,
       ...locationFields,
@@ -1026,6 +1028,94 @@ app.post("/api/khatams/:slug/admin/campaign", async (c) => {
   });
 });
 
+// POST /api/khatams/:slug/admin/create-khatams — Add one or many campaign Khatams
+app.post("/api/khatams/:slug/admin/create-khatams", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const {
+    pin,
+    count = 1,
+    name,
+    name_prefix,
+    participation_mode = "open",
+    completed = false,
+  } = await c.req.json<{
+    pin: string;
+    count?: number;
+    name?: string;
+    name_prefix?: string;
+    participation_mode?: "open" | "group";
+    completed?: boolean;
+  }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  if (!Number.isInteger(count) || count < 1 || count > 100) {
+    return c.json({ error: "Khatam count must be between 1 and 100" }, 400);
+  }
+  if (participation_mode !== "open" && participation_mode !== "group") {
+    return c.json({ error: "Invalid participation mode" }, 400);
+  }
+  if (count === 1 && !name?.trim()) {
+    return c.json({ error: "Khatam name is required" }, 400);
+  }
+  if (name && name.trim().length > 80) return c.json({ error: "Khatam name is too long" }, 400);
+  if (name_prefix && name_prefix.trim().length > 60) {
+    return c.json({ error: "Khatam name prefix is too long" }, 400);
+  }
+
+  const { data: createdIds, error } = await db.rpc("create_campaign_khatams", {
+    p_source_khatam_id: khatam.id,
+    p_count: count,
+    p_exact_name: name?.trim() ?? "",
+    p_name_prefix: name_prefix?.trim() ?? "",
+    p_participation_mode: participation_mode,
+    p_completed: Boolean(completed),
+  });
+
+  if (error) {
+    if (
+      error.message.includes("between 1 and 100") ||
+      error.message.includes("Participation mode") ||
+      error.message.includes("name is too long")
+    ) {
+      return c.json({ error: error.message }, 400);
+    }
+    return c.json({ error: "Failed to create campaign Khatams" }, 500);
+  }
+
+  const ids = ((createdIds ?? []) as number[]).map(Number);
+  return c.json({ ok: true, created: ids.length, ids }, 201);
+});
+
+// POST /api/khatams/:slug/admin/reorder — Persist the campaign's Khatam order
+app.post("/api/khatams/:slug/admin/reorder", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, ordered_ids } = await c.req.json<{ pin: string; ordered_ids: number[] }>();
+
+  const { valid, khatam } = await verifyAdmin(db, slug, pin);
+  if (!valid || !khatam) return c.json({ error: "Invalid pin" }, 403);
+  if (!Array.isArray(ordered_ids) || ordered_ids.length === 0 || ordered_ids.length > 5000) {
+    return c.json({ error: "A valid Khatam order is required" }, 400);
+  }
+  if (!ordered_ids.every(id => Number.isSafeInteger(id) && id > 0)) {
+    return c.json({ error: "Khatam order contains an invalid id" }, 400);
+  }
+
+  const { data: reordered, error } = await db.rpc("reorder_campaign_khatams", {
+    p_source_khatam_id: khatam.id,
+    p_ordered_ids: ordered_ids,
+  });
+
+  if (error) {
+    if (error.message.includes("exactly once")) return c.json({ error: error.message }, 409);
+    return c.json({ error: "Failed to reorder campaign Khatams" }, 500);
+  }
+
+  return c.json({ ok: true, reordered: Number(reordered) });
+});
+
 // POST /api/khatams/:slug/admin/bulk-new-khatams — Fill campaign up to a target
 app.post("/api/khatams/:slug/admin/bulk-new-khatams", async (c) => {
   const db = createServiceClient(c.env);
@@ -1228,6 +1318,27 @@ app.post("/api/khatams/:slug/admin/assign-all", async (c) => {
   return c.json({ ok: true, assigned: Number(assigned) });
 });
 
+// POST /api/khatams/:slug/admin/complete-all — Mark all 30 Juz complete
+app.post("/api/khatams/:slug/admin/complete-all", async (c) => {
+  const db = createServiceClient(c.env);
+  const slug = c.req.param("slug");
+  const { pin, khatam_id } = await c.req.json<{ pin: string; khatam_id?: number }>();
+
+  const { valid } = await verifyAdmin(db, slug, pin);
+  if (!valid) return c.json({ error: "Invalid pin" }, 403);
+  const khatam = await resolveKhatam(db, slug, khatam_id);
+  if (!khatam) return c.json({ error: "Khatam not found" }, 404);
+  if (khatam.is_solo) return c.json({ error: "Not available for personal khatams" }, 400);
+
+  const { data: completed, error } = await db.rpc("complete_entire_khatam", {
+    p_khatam_id: khatam.id,
+    p_completed_by: "Admin",
+  });
+
+  if (error) return c.json({ error: "Failed to mark the Khatam complete" }, 500);
+  return c.json({ ok: true, completed: Number(completed) });
+});
+
 // GET /api/khatams/:slug/admin/participants — List participant names for a slug
 app.get("/api/khatams/:slug/admin/participants", async (c) => {
   const db = createServiceClient(c.env);
@@ -1395,6 +1506,7 @@ app.post("/api/khatams/:slug/admin/new-khatam", async (c) => {
       name: khatamName,
       pin_hash: khatam.pin_hash,
       khatam_num: newNum,
+      display_order: newNum,
       campaign_id: khatam.campaign_id,
       is_solo: false,
       claim_limit: khatam.claim_limit,

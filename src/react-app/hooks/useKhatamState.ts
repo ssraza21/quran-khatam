@@ -13,6 +13,7 @@ export interface KhatamInfo {
   name: string | null;
   created_at: string;
   completed_at: string | null;
+  display_order: number;
   is_solo: boolean;
   claim_limit: number;
   show_names_on_globe: boolean;
@@ -103,6 +104,7 @@ export function useKhatamState(slug: string) {
         name: k.name ?? null,
         created_at: k.created_at,
         completed_at: k.completed_at,
+        display_order: k.display_order ?? k.khatam_num,
         is_solo: k.is_solo ?? false,
         claim_limit: k.claim_limit ?? 8,
         show_names_on_globe: k.show_names_on_globe ?? true,
@@ -565,6 +567,78 @@ export function useKhatamState(slug: string) {
     }
   };
 
+  const adminCompleteEntireKhatam = async () => {
+    if (!adminMode || !selectedKhatamId) return;
+    const confirmed = window.confirm(
+      "Mark all 30 Juz in this Khatam complete? Every unfinished portion will be completed immediately."
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.adminCompleteAll(slug, adminPin, selectedKhatamId);
+      toast.success("All 30 Juz marked complete");
+      await loadSlots(selectedKhatamId);
+      await loadKhatams();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to mark the Khatam complete"));
+    }
+  };
+
+  const adminCreateCampaignKhatams = async (options: {
+    count: number;
+    name?: string;
+    namePrefix?: string;
+    participationMode: ParticipationMode;
+    completed: boolean;
+  }): Promise<boolean> => {
+    if (!adminMode) return false;
+
+    try {
+      const result = await api.adminCreateKhatams(slug, adminPin, options);
+      toast.success(
+        options.completed
+          ? `${result.created} completed Khatam${result.created === 1 ? "" : "s"} added`
+          : `${result.created} open Khatam${result.created === 1 ? "" : "s"} added`
+      );
+
+      const infos = await loadKhatams();
+      if (result.ids.length === 1) {
+        const target = infos.find(info => info.id === result.ids[0]);
+        if (target) {
+          setSelectedKhatamId(target.id);
+          setKhatamNum(target.khatam_num);
+          localStorage.setItem(`selectedKhatamId:${slug}`, String(target.id));
+          await loadSlots(target.id);
+        }
+      }
+      return true;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to add campaign Khatams"));
+      return false;
+    }
+  };
+
+  const adminReorderKhatams = async (orderedIds: number[]) => {
+    if (!adminMode || orderedIds.length !== khatams.length) return;
+    const previous = khatams;
+    const byId = new Map(previous.map(khatam => [khatam.id, khatam]));
+    const reordered = orderedIds
+      .map((id, index) => {
+        const khatam = byId.get(id);
+        return khatam ? { ...khatam, display_order: index + 1 } : null;
+      })
+      .filter((khatam): khatam is KhatamInfo => khatam !== null);
+    if (reordered.length !== previous.length) return;
+
+    setKhatams(reordered);
+    try {
+      await api.adminReorderKhatams(slug, adminPin, orderedIds);
+    } catch (error: unknown) {
+      setKhatams(previous);
+      toast.error(getErrorMessage(error, "Failed to save the Khatam order"));
+    }
+  };
+
   const adminBulkCreateRounds = async (targetTotal: number, namePrefix: string) => {
     if (!adminMode) return;
     try {
@@ -814,6 +888,7 @@ export function useKhatamState(slug: string) {
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames,
     adminSaveClaimLimit, adminUpdateCampaign, adminAssignEntireQuran, adminBulkCreateRounds,
+    adminCompleteEntireKhatam, adminCreateCampaignKhatams, adminReorderKhatams,
     adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminRecordCompletedKhatam,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
     loadParticipants,
