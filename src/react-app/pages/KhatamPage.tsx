@@ -197,6 +197,7 @@ export default function KhatamPage() {
 
       {/* Khatam Selector */}
       <KhatamSelector
+        key={slug}
         khatams={khatams}
         selectedId={selectedKhatamId}
         onSelect={selectKhatam}

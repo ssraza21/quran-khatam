@@ -9,6 +9,8 @@ interface KhatamSelectorProps {
   onReorder?: (orderedIds: number[]) => Promise<void>;
 }
 
+type PublicFilter = "active" | "completed";
+
 function progressPriority(khatam: KhatamInfo) {
   if (khatam.started && khatam.done < khatam.total) return 0;
   if (khatam.done < khatam.total) return 1;
@@ -23,7 +25,9 @@ export default function KhatamSelector({
 }: KhatamSelectorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
+  const hasAlignedInitialSelection = useRef(false);
   const [query, setQuery] = useState("");
+  const [publicFilter, setPublicFilter] = useState<PublicFilter>("active");
   const [movingId, setMovingId] = useState<number | null>(null);
 
   const orderedKhatams = useMemo(() => [...khatams].sort((a, b) => {
@@ -33,12 +37,34 @@ export default function KhatamSelector({
     return progressPriority(a) - progressPriority(b) || a.khatam_num - b.khatam_num;
   }), [khatams, onReorder]);
 
+  const activeKhatams = useMemo(
+    () => orderedKhatams.filter(khatam => khatam.done < khatam.total),
+    [orderedKhatams],
+  );
+  const completedKhatams = useMemo(
+    () => orderedKhatams.filter(khatam => khatam.done === khatam.total),
+    [orderedKhatams],
+  );
+  const filteredKhatams = onReorder
+    ? orderedKhatams
+    : publicFilter === "active"
+      ? activeKhatams
+      : completedKhatams;
+
   const visibleKhatams = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return orderedKhatams.filter(khatam => !normalizedQuery
+    return filteredKhatams.filter(khatam => !normalizedQuery
       || (khatam.name ?? `Khatam ${khatam.khatam_num}`).toLowerCase().includes(normalizedQuery)
       || String(khatam.khatam_num).includes(normalizedQuery));
-  }, [orderedKhatams, query]);
+  }, [filteredKhatams, query]);
+
+  useEffect(() => {
+    if (onReorder || hasAlignedInitialSelection.current || selectedId === null || khatams.length === 0) return;
+    hasAlignedInitialSelection.current = true;
+    if (activeKhatams.length > 0 && !activeKhatams.some(khatam => khatam.id === selectedId)) {
+      onSelect(activeKhatams[0].id);
+    }
+  }, [activeKhatams, khatams.length, onReorder, onSelect, selectedId]);
 
   useEffect(() => {
     if (selectedRef.current && scrollRef.current) {
@@ -75,6 +101,14 @@ export default function KhatamSelector({
     }
   };
 
+  const selectPublicFilter = (nextFilter: PublicFilter) => {
+    setPublicFilter(nextFilter);
+    const nextKhatams = nextFilter === "active" ? activeKhatams : completedKhatams;
+    if (nextKhatams.length > 0 && !nextKhatams.some(khatam => khatam.id === selectedId)) {
+      onSelect(nextKhatams[0].id);
+    }
+  };
+
   return (
     <div className="border-b border-gray-200/80 bg-[#faf8f6]">
       <div className="mx-auto max-w-[1200px] px-4 py-3">
@@ -99,6 +133,43 @@ export default function KhatamSelector({
               className="min-w-0 flex-1 border-0 bg-transparent py-2 text-xs text-gray-700 outline-none"
             />
           </label>
+        )}
+
+        {!onReorder && (
+          <div
+            className="mb-3 flex w-fit items-center rounded-lg border border-gray-200 bg-white p-1"
+            role="group"
+            aria-label="Filter campaign Khatams by status"
+          >
+            {([
+              { value: "active", label: "Active", count: activeKhatams.length },
+              { value: "completed", label: "Completed", count: completedKhatams.length },
+            ] as const).map(option => {
+              const isCurrent = publicFilter === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => selectPublicFilter(option.value)}
+                  aria-pressed={isCurrent}
+                  className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B0000]/30 ${
+                    isCurrent
+                      ? "bg-[#8B0000] text-white"
+                      : "text-gray-500 hover:bg-[#faf8f6] hover:text-gray-700"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span
+                    className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] tabular-nums ${
+                      isCurrent ? "bg-white/15 text-white/85" : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {option.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
 
         <div
@@ -201,7 +272,13 @@ export default function KhatamSelector({
             );
           })}
           {visibleKhatams.length === 0 && (
-            <p className="px-1 py-3 text-xs text-gray-400">No Khatam matches “{query.trim()}”.</p>
+            <p className="px-1 py-3 text-xs text-gray-400">
+              {query.trim()
+                ? `No ${onReorder ? "" : `${publicFilter} `}Khatam matches “${query.trim()}”.`
+                : publicFilter === "completed"
+                  ? "No Khatams have been completed yet."
+                  : "No active Khatams right now."}
+            </p>
           )}
         </div>
       </div>
