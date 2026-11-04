@@ -44,7 +44,7 @@ function KhatamRow({ khatam, onOpen }: { khatam: KhatamMeta; onOpen: (k: KhatamM
           </div>
           <div className="mt-1.5 flex items-center gap-3">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
-              <div className={cn("h-full rounded-full", complete ? "bg-success" : "bg-primary")} style={{ width: `${pct}%` }} />
+              <div className={"h-full rounded-full bg-success"} style={{ width: `${pct}%` }} />
             </div>
             <span className={cn("w-20 shrink-0 text-right text-xs tabular-nums", complete ? "text-success" : "text-stone-500")}>
               {complete ? "Complete" : `${done}/${total} done`}

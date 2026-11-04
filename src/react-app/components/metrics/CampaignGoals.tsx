@@ -24,7 +24,7 @@ function GoalTile({ goal }: { goal: GoalTileData }) {
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100">
         <div
-          className={cn("h-full rounded-full transition-[width] duration-700 motion-reduce:transition-none", reached ? "bg-success" : "bg-primary")}
+          className={cn("h-full rounded-full transition-[width] duration-700 motion-reduce:transition-none", "bg-success")}
           style={{ width: `${pct}%` }}
         />
       </div>

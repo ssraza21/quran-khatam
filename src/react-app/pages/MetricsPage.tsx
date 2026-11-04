@@ -316,7 +316,10 @@ export default function MetricsPage() {
                   </select>
                 </div>
               ) : (
-                <h2 id="khatam-progress" className="text-base font-semibold text-stone-900">
+                <h2
+                  id="khatam-progress"
+                  className={cn("text-base font-semibold text-stone-900", selected?.name === campaignName && "sr-only")}
+                >
                   {selected?.name ?? "Khatam"}
                 </h2>
               )}
