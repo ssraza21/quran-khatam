@@ -8,6 +8,8 @@ import GlobePage from "./pages/GlobePage";
 import CampaignDirectoryPage from "@/pages/CampaignDirectoryPage";
 import CampaignOverviewPage from "@/pages/CampaignOverviewPage";
 import SurahGoalPage from "@/pages/SurahGoalPage";
+import CreateKhatamPage from "@/pages/CreateKhatamPage";
+import NotFoundPage from "@/pages/NotFoundPage";
 import { CompletionToastProvider } from "./components/ui/CompletionToast";
 
 export default function App() {
@@ -16,6 +18,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/new" element={<CreateKhatamPage />} />
           <Route path="/campaigns" element={<CampaignDirectoryPage />} />
           <Route path="/k/:slug" element={<CampaignOverviewPage />} />
           <Route path="/k/:slug/tracker" element={<KhatamPage />} />
@@ -23,6 +26,7 @@ export default function App() {
           <Route path="/k/:slug/metrics" element={<MetricsPage />} />
           <Route path="/k/:slug/admin" element={<AdminPage />} />
           <Route path="/globe" element={<GlobePage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
         {/* Redirect old routes */}
         <Route path="/khatam/*" element={<Navigate to="/" replace />} />

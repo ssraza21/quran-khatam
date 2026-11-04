@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 export default function Layout() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#F3F3F3]">
+    <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
       <main className="flex-1">
         <Outlet />

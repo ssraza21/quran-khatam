@@ -9,14 +9,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
       style={
         {
           "--normal-bg": "#fff",
-          "--normal-text": "#4A4A4A",
-          "--normal-border": "#E0E0E0",
-          "--border-radius": "24px",
+          "--normal-text": "#1C1917",
+          "--normal-border": "#E7E5E4",
+          "--border-radius": "12px",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "font-[Inter,system-ui,sans-serif] shadow-lg",
+          toast: "font-sans shadow-md",
         },
       }}
       {...props}

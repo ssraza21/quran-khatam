@@ -1,80 +1,59 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  CheckCircle2,
-  Clock3,
-  Search,
-  Shield,
-  Target,
-  Users,
-} from "lucide-react";
+import { ChevronRight, Search, Share2 } from "lucide-react";
 import { api, type KhatamMeta } from "@/lib/api";
 import { getSurahName } from "@/lib/surahs";
 import type { CampaignGoal } from "@/lib/types";
+import { btn, ui } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+import { khatamLabel } from "@/lib/helpers";
+import PageHeader from "@/components/layout/PageHeader";
+import CampaignTabs from "@/components/layout/CampaignTabs";
+import ShareDrawer from "@/components/khatam/ShareDrawer";
+import NotFoundPage from "@/pages/NotFoundPage";
 
-function roundPriority(khatam: KhatamMeta) {
-  const done = khatam.done ?? 0;
-  const total = khatam.total ?? 120;
-  if (khatam.started && done < total) return 0;
-  if (done < total) return 1;
-  return 2;
+const isDone = (k: KhatamMeta) => (k.done ?? 0) >= (k.total ?? 120);
+
+/** The khatam a new visitor should be sent to: one already underway, else the first unstarted one. */
+function nextKhatam(khatams: KhatamMeta[]) {
+  const ordered = [...khatams].sort((a, b) => a.khatam_num - b.khatam_num);
+  const open = ordered.filter(k => (k.participation_mode ?? "open") === "open");
+  const pool = open.length > 0 ? open : ordered;
+  return pool.find(k => k.started && !isDone(k)) ?? pool.find(k => !isDone(k)) ?? null;
 }
 
-function KhatamCard({
-  khatam,
-  onOpen,
-}: {
-  khatam: KhatamMeta;
-  onOpen: (khatam: KhatamMeta) => void;
-}) {
+function KhatamRow({ khatam, onOpen }: { khatam: KhatamMeta; onOpen: (k: KhatamMeta) => void }) {
   const done = khatam.done ?? 0;
   const total = khatam.total ?? 120;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const complete = done === total;
-  const inProgress = Boolean(khatam.started) && !complete;
+  const complete = done >= total;
 
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(khatam)}
-      className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 text-left transition-all hover:border-[#8B0000]/25 hover:bg-[#FFF9F7] focus-visible:ring-2 focus-visible:ring-[#8B0000]/25 sm:grid-cols-[auto_minmax(10rem,1fr)_minmax(10rem,0.8fr)_auto] sm:px-4"
-    >
-      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-        complete ? "bg-green-50 text-green-700" : inProgress ? "bg-amber-50 text-amber-700" : "bg-[#FFF5F5] text-[#8B0000]"
-      }`}>
-        {complete ? <CheckCircle2 size={16} /> : inProgress ? <Clock3 size={16} /> : <BookOpen size={16} />}
-      </div>
-
-      <div className="min-w-0">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-gray-400">Khatam {khatam.khatam_num}</p>
-        <h3 className="truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#8B0000]">
-          {khatam.name || `Khatam ${khatam.khatam_num}`}
-        </h3>
-      </div>
-
-      <div className="col-span-3 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:col-span-1">
-        <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
-          <div
-            className={`h-full rounded-full ${complete ? "bg-green-600" : "bg-[#8B0000]"}`}
-            style={{ width: `${pct}%` }}
-          />
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(khatam)}
+        className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-stone-50"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[15px] font-medium text-stone-900">{khatamLabel(khatam)}</span>
+            {khatam.participation_mode === "group" && (
+              <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-stone-600">Group</span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center gap-3">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
+              <div className={cn("h-full rounded-full", complete ? "bg-success" : "bg-primary")} style={{ width: `${pct}%` }} />
+            </div>
+            <span className={cn("w-20 shrink-0 text-right text-xs tabular-nums", complete ? "text-success" : "text-stone-500")}>
+              {complete ? "Complete" : `${done}/${total} done`}
+            </span>
+          </div>
         </div>
-        <span className="text-[10px] font-medium tabular-nums text-gray-400">{pct}%</span>
-        <span className="col-span-2 text-[10px] text-gray-400">{done} of {total} quarters complete</span>
-      </div>
-
-      <div className="col-start-3 row-start-1 flex items-center gap-2 sm:col-start-4">
-        <span className={`hidden text-[10px] font-semibold sm:inline ${
-          complete ? "text-green-700" : inProgress ? "text-amber-700" : "text-gray-500"
-        }`}>
-          {complete ? "Complete" : inProgress ? "In progress" : "Ready"}
-        </span>
-        <ArrowRight size={14} className="text-[#8B0000] transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </button>
+        <ChevronRight size={18} className="shrink-0 text-stone-400" />
+      </button>
+    </li>
   );
 }
 
@@ -84,12 +63,14 @@ export default function CampaignOverviewPage() {
   const [khatams, setKhatams] = useState<KhatamMeta[]>([]);
   const [goals, setGoals] = useState<CampaignGoal[]>([]);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"active" | "completed">("active");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
-    Promise.all([api.getHistory(slug), api.getCampaignGoals(slug)])
+    Promise.all([api.getHistory(slug), api.getCampaignGoals(slug).catch(() => ({ goals: [] as CampaignGoal[] }))])
       .then(([history, goalResult]) => {
         setKhatams(history);
         setGoals(goalResult.goals);
@@ -99,23 +80,22 @@ export default function CampaignOverviewPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  const sorted = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return [...khatams]
-      .filter(khatam => !normalized
-        || (khatam.name ?? `Khatam ${khatam.khatam_num}`).toLowerCase().includes(normalized)
-        || String(khatam.khatam_num).includes(normalized))
-      .sort((a, b) => roundPriority(a) - roundPriority(b) || a.khatam_num - b.khatam_num);
-  }, [khatams, query]);
-
-  const openKhatams = sorted.filter(khatam => (khatam.participation_mode ?? "open") === "open");
-  const groupKhatams = sorted.filter(khatam => khatam.participation_mode === "group");
   const quranGoal = goals.find(goal => goal.goal_type === "quran_khatam");
   const surahGoals = goals.filter(goal => goal.goal_type === "surah_recitation" && goal.is_enabled);
   const quranEnabled = quranGoal?.is_enabled ?? true;
   const campaign = khatams[0];
-  const completed = khatams.filter(khatam => (khatam.done ?? 0) === (khatam.total ?? 120)).length;
-  const active = khatams.filter(khatam => khatam.started && (khatam.done ?? 0) < (khatam.total ?? 120)).length;
+
+  const active = useMemo(() => khatams.filter(k => !isDone(k)), [khatams]);
+  const completed = useMemo(() => khatams.filter(isDone), [khatams]);
+  const next = useMemo(() => nextKhatam(khatams), [khatams]);
+
+  const listed = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = filter === "active" ? active : completed;
+    return [...base]
+      .filter(k => !q || khatamLabel(k).toLowerCase().includes(q) || String(k.khatam_num) === q)
+      .sort((a, b) => Number(Boolean(b.started)) - Number(Boolean(a.started)) || a.khatam_num - b.khatam_num);
+  }, [active, completed, filter, query]);
 
   const openTracker = (khatam: KhatamMeta) => {
     if (!slug) return;
@@ -126,95 +106,107 @@ export default function CampaignOverviewPage() {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#8B0000] border-t-transparent" />
+        <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-primary border-t-transparent" />
       </div>
     );
   }
 
-  if (notFound || !campaign) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center px-5 text-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Campaign not found</h1>
-          <Link to="/" className="mt-3 inline-block text-sm font-medium text-[#8B0000] hover:underline">
-            Go home
-          </Link>
-        </div>
-      </div>
-    );
+  if (notFound || !campaign || !slug) {
+    return <NotFoundPage title="Khatam not found" message={`There's no khatam at /k/${slug}. Check the link with whoever shared it.`} />;
   }
 
-  if (khatams.every(khatam => khatam.is_solo)) {
+  // Personal khatams and simple single-khatam campaigns don't need an overview.
+  if (khatams.every(k => k.is_solo) || (khatams.length === 1 && surahGoals.length === 0)) {
     return <Navigate to={`/k/${slug}/tracker`} replace />;
   }
 
+  const title = campaign.campaign_name || campaign.name || "Khatam";
+  const showSearch = khatams.length > 8;
+
   return (
-    <div className="min-h-screen bg-[#FAFAF9]">
-      <header
-        className="relative overflow-hidden px-5 py-12 text-white"
-        style={{ background: "linear-gradient(135deg, #8B0000 0%, #5A0000 68%, #3A0000 100%)" }}
+    <>
+      <PageHeader
+        title={title}
+        description={campaign.campaign_description}
+        actions={
+          <button type="button" onClick={() => setShareOpen(true)} className={btn("secondary", "md")}>
+            <Share2 size={16} />
+            Invite
+          </button>
+        }
       >
-        <div className="relative mx-auto max-w-[1100px]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Campaign overview</p>
-          <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1
-                className="text-4xl font-normal tracking-wide text-white sm:text-5xl"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                {campaign.campaign_name || campaign.name || "Khatam campaign"}
-              </h1>
-              {campaign.campaign_description && (
-                <p className="mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-relaxed text-white/70 sm:text-base">
-                  {campaign.campaign_description}
+        <CampaignTabs slug={slug} />
+      </PageHeader>
+
+      <div className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+        {quranEnabled && (
+          <section className={cn(ui.card, "p-5 sm:p-6")}>
+            {next ? (
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-stone-500">Ready for readers</p>
+                  <h2 className="mt-0.5 text-xl font-semibold text-stone-900">{khatamLabel(next)}</h2>
+                  <p className="mt-1 text-sm text-stone-600">
+                    {120 - (next.done ?? 0)} of 120 quarters still to read
+                  </p>
+                </div>
+                <button type="button" onClick={() => openTracker(next)} className={cn(btn("primary", "lg"), "w-full sm:w-auto")}>
+                  Pick a part to read
+                </button>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-xl font-semibold text-stone-900">Every khatam is complete</h2>
+                <p className="mt-1 text-sm text-stone-600">
+                  Alhamdulillah. The organizer can start another one from the admin page.
                 </p>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to={`/k/${slug}/metrics`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20"
-              >
-                <BarChart3 size={13} />
-                Detailed dashboard
-              </Link>
-              <Link
-                to={`/k/${slug}/admin`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20"
-              >
-                <Shield size={13} />
-                Organizer admin
-              </Link>
-            </div>
-          </div>
+              </div>
+            )}
+            <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-stone-100 pt-4 text-center sm:max-w-md sm:text-left">
+              <div>
+                <dt className="text-xs text-stone-500">Completed</dt>
+                <dd className="text-lg font-semibold tabular-nums text-stone-900">{completed.length}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-500">Underway</dt>
+                <dd className="text-lg font-semibold tabular-nums text-stone-900">{active.filter(k => k.started).length}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-500">Goal</dt>
+                <dd className="text-lg font-semibold tabular-nums text-stone-900">{Math.max(campaign.campaign_goal ?? 0, khatams.length)}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
-          <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/15 pt-5 text-sm text-white/70">
-            {quranEnabled && <span><strong className="text-xl text-white">{active}</strong> Khatams in progress</span>}
-            {quranEnabled && <span><strong className="text-xl text-white">{completed}</strong> Khatams complete</span>}
-            {surahGoals.length > 0 && <span><strong className="text-xl text-white">{surahGoals.length}</strong> Surah recitation{surahGoals.length === 1 ? "" : "s"}</span>}
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1100px] px-5 py-8">
         {surahGoals.length > 0 && (
           <section>
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-2xl font-semibold text-gray-950" style={{ fontFamily: "'Playfair Display', serif" }}><Target size={18} className="text-[#8B0000]" />Surah Recitations</h2>
-                <p className="mt-1 text-sm text-gray-500">Pledge a number of recitations, then return to mark them complete.</p>
-              </div>
-              <span className="text-xs font-medium text-gray-400">{surahGoals.length}</span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <h2 className="text-lg font-semibold text-stone-900">Surah recitations</h2>
+            <p className="mt-0.5 text-sm text-stone-600">Pledge how many times you'll recite a surah, then mark them done.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               {surahGoals.map(goal => {
                 const pct = goal.target > 0 ? Math.min(100, Math.round((goal.completed / goal.target) * 100)) : 0;
+                const done = goal.completed >= goal.target;
                 return (
-                  <Link key={goal.id} to={`/k/${slug}/goals/${goal.id}`} className="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#8B0000]/25 hover:shadow-md">
-                    <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">Surah {goal.surah_number}</p><h3 className="mt-1 text-xl font-semibold text-gray-900 group-hover:text-[#8B0000]">{getSurahName(goal.surah_number)}</h3></div><BookOpen size={20} className="text-[#8B0000]" /></div>
-                    <div className="mt-5 flex items-end justify-between gap-4"><p className="text-sm text-gray-500"><strong className="text-2xl text-[#8B0000]">{goal.completed.toLocaleString()}</strong> of {goal.target.toLocaleString()} complete</p><span className="text-xs font-semibold text-[#8B0000]">Open <ArrowRight size={13} className="inline" /></span></div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#8B0000]" style={{ width: `${pct}%` }} /></div>
-                    <p className="mt-2 text-[10px] text-gray-400">{goal.in_progress.toLocaleString()} currently pledged · {goal.contributor_count} participants</p>
+                  <Link
+                    key={goal.id}
+                    to={`/k/${slug}/goals/${goal.id}`}
+                    className={cn(ui.card, "group block p-4 transition-colors hover:border-stone-300")}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-[15px] font-semibold text-stone-900 group-hover:text-primary">
+                        Surah {getSurahName(goal.surah_number)}
+                      </h3>
+                      <ChevronRight size={18} className="text-stone-400" />
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-stone-100">
+                      <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="mt-2 text-sm text-stone-600">
+                      {done
+                        ? `All ${goal.target.toLocaleString()} recitations complete`
+                        : `${goal.completed.toLocaleString()} of ${goal.target.toLocaleString()} recited · ${goal.contributor_count} ${goal.contributor_count === 1 ? "person" : "people"}`}
+                    </p>
                   </Link>
                 );
               })}
@@ -222,59 +214,59 @@ export default function CampaignOverviewPage() {
           </section>
         )}
 
-        {quranEnabled && <section className={`${surahGoals.length > 0 ? "mt-12 border-t border-gray-200 pt-8" : ""}`}>
-          <h2 className="text-2xl font-semibold text-gray-950" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Full Qur’an Khatam
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">Complete the Qur’an through individual portions or coordinated groups.</p>
-          <label className="mt-5 flex max-w-xl items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 shadow-sm focus-within:border-[#8B0000]/50 focus-within:ring-2 focus-within:ring-[#8B0000]/10">
-            <Search size={17} className="shrink-0 text-[#8B0000]" />
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="Search by name or Khatam number"
-              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm text-gray-800 outline-none"
-            />
-          </label>
-          <p className="mt-2 text-xs text-gray-400">Khatams with unfinished portions appear first.</p>
-        </section>}
-
-        {quranEnabled && <section className="mt-10">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h3 className="flex items-center gap-2 text-xl font-semibold text-gray-900"><Users size={17} className="text-[#8B0000]" />Individual portions</h3>
-              <p className="mt-1 text-sm text-gray-500">Anyone with the link can select a quarter or Juz.</p>
+        {quranEnabled && khatams.length > 1 && (
+          <section>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <h2 className="text-lg font-semibold text-stone-900">All khatams</h2>
+              <div className="inline-flex rounded-lg bg-stone-100 p-1" role="tablist">
+                {([
+                  ["active", `Active · ${active.length}`],
+                  ["completed", `Completed · ${completed.length}`],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === value}
+                    onClick={() => setFilter(value)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                      filter === value ? "bg-white text-stone-900 shadow-xs" : "text-stone-600 hover:text-stone-900",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <span className="text-xs font-medium text-gray-400">{openKhatams.length}</span>
-          </div>
-          <div className="mt-4 space-y-2">
-            {openKhatams.map(khatam => <KhatamCard key={khatam.id} khatam={khatam} onOpen={openTracker} />)}
-          </div>
-          {openKhatams.length === 0 && (
-            <p className="mt-5 border-t border-gray-200 py-6 text-sm text-gray-400">
-              No individual-portion Khatams match this search.
-            </p>
-          )}
-        </section>}
 
-        {quranEnabled && <section className="mt-12">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h3 className="flex items-center gap-2 text-xl font-semibold text-gray-900"><BookOpen size={17} className="text-[#8B0000]" />Group Khatams</h3>
-              <p className="mt-1 text-sm text-gray-500">Whole-Quran commitments coordinated by a family, class, or institution.</p>
-            </div>
-            <span className="text-xs font-medium text-gray-400">{groupKhatams.length}</span>
-          </div>
-          <div className="mt-4 space-y-2">
-            {groupKhatams.map(khatam => <KhatamCard key={khatam.id} khatam={khatam} onOpen={openTracker} />)}
-          </div>
-          {groupKhatams.length === 0 && (
-            <p className="mt-5 border-t border-gray-200 py-6 text-sm text-gray-400">
-              {query ? "No group Khatams match this search." : "No group Khatams have been added yet."}
-            </p>
-          )}
-        </section>}
-      </main>
-    </div>
+            {showSearch && (
+              <label className="relative mt-3 block max-w-sm">
+                <span className="sr-only">Search khatams</span>
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search by name or number"
+                  className={cn(ui.input, "pl-9")}
+                />
+              </label>
+            )}
+
+            {listed.length > 0 ? (
+              <ul className={cn(ui.card, "mt-3 divide-y divide-stone-100 overflow-hidden")}>
+                {listed.map(k => <KhatamRow key={k.id} khatam={k} onOpen={openTracker} />)}
+              </ul>
+            ) : (
+              <p className="mt-3 rounded-xl border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500">
+                {query ? "No khatams match your search." : filter === "completed" ? "None completed yet." : "No active khatams."}
+              </p>
+            )}
+          </section>
+        )}
+      </div>
+
+      <ShareDrawer open={shareOpen} onClose={() => setShareOpen(false)} title={title} slug={slug} />
+    </>
   );
 }
