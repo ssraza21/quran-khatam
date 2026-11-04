@@ -76,6 +76,9 @@ export function useKhatamState(slug: string) {
   const [adminDrawer, setAdminDrawer] = useState<{ juz: number; q: number } | null>(null);
   const [adminPin, setAdminPin] = useState(() => getStoredAdminPin(slug));
   const [adminErr, setAdminErr] = useState("");
+  // True while a PIN saved in this browser tab is being re-verified, so the admin page can
+  // show a spinner instead of flashing the PIN form.
+  const [adminRestoring, setAdminRestoring] = useState(() => !!getStoredAdminPin(slug));
   const [newKhatamName, setNewKhatamName] = useState("");
   const [participants, setParticipants] = useState<ParticipantInfo[]>([]);
   const [claimLimitInput, setClaimLimitInput] = useState<number>(8);
@@ -233,6 +236,15 @@ export function useKhatamState(slug: string) {
   const claimLimit = khatams.find(k => k.id === selectedKhatamId)?.claim_limit ?? 8;
   const quranGoalEnabled = campaignGoals.find(goal => goal.goal_type === "quran_khatam")?.is_enabled ?? true;
 
+  // Keep the admin "default claim limit" field in sync with the selected Khatam
+  // (adjusting state during render rather than in an effect).
+  const claimLimitKey = `${selectedKhatamId}:${claimLimit}`;
+  const [syncedClaimLimitKey, setSyncedClaimLimitKey] = useState(claimLimitKey);
+  if (syncedClaimLimitKey !== claimLimitKey) {
+    setSyncedClaimLimitKey(claimLimitKey);
+    setClaimLimitInput(claimLimit);
+  }
+
   const getClaimLimitForName = useCallback((name: string) => {
     const override = participants.find(p => p.name.toLowerCase() === name.toLowerCase())?.claim_limit;
     return override ?? claimLimit;
@@ -253,9 +265,9 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.claim(slug, juz, q, name, selectedKhatamId ?? undefined);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
-      return { err: e.message || "Failed to claim. Please try again." };
+      return { err: getErrorMessage(e, "Failed to claim. Please try again.") };
     }
 
     // Realtime subscription handles slot refresh for all clients including this one.
@@ -278,13 +290,13 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.claimJuz(slug, juz, name, selectedKhatamId ?? undefined);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Revert — restore original state for all 4 quarters
       setSlots(prev => prev.map(s => {
         const orig = juzSlots.find(o => o.juz === s.juz && o.q === s.q);
         return orig && s.juz === juz ? orig : s;
       }));
-      return { err: e.message || "Failed to claim. Please try again." };
+      return { err: getErrorMessage(e, "Failed to claim. Please try again.") };
     }
 
     await loadKhatams();
@@ -302,9 +314,9 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.complete(slug, juz, q, name, selectedKhatamId ?? undefined);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
-      return { err: e.message || "Failed to mark complete. Please try again." };
+      return { err: getErrorMessage(e, "Failed to mark complete. Please try again.") };
     }
 
     await loadKhatams();
@@ -313,7 +325,7 @@ export function useKhatamState(slug: string) {
   const onCompleteJuz = async (juz: number, name: string): Promise<{ err: string } | undefined> => {
     const juzSlots = slots.filter(s => s.juz === juz);
     if (!juzSlots.every(s => s.status === "cl")) {
-      return { err: "All 4 quarters must be in progress before completing the Juz." };
+      return { err: "All 4 quarters must be claimed before completing the Juz." };
     }
     const owner = juzSlots[0]?.by;
     if (owner && name.toLowerCase() !== owner.toLowerCase()) {
@@ -327,12 +339,12 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.completeJuz(slug, juz, name, selectedKhatamId ?? undefined);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setSlots(prev => prev.map(s => {
         const orig = juzSlots.find(o => o.juz === s.juz && o.q === s.q);
         return orig && s.juz === juz ? orig : s;
       }));
-      return { err: e.message || "Failed to complete Juz. Please try again." };
+      return { err: getErrorMessage(e, "Failed to complete Juz. Please try again.") };
     }
 
     await loadKhatams();
@@ -352,15 +364,11 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.soloToggle(slug, juz, q);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Revert on error
       setSlots(prev => prev.map(s => s.juz === juz && s.q === q ? slot : s));
-      toast.error(e.message || "Failed to update");
+      toast.error(getErrorMessage(e, "Failed to update"));
       return;
-    }
-
-    if (willBeDone) {
-      toast.success(`Juz ${juz} ${Q_SHORT[q - 1]} ✓`);
     }
 
     await loadKhatams();
@@ -379,8 +387,8 @@ export function useKhatamState(slug: string) {
         setKhatamNum(target.khatam_num);
         await loadSlots(target.id);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to start new khatam");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to start new khatam"));
       return;
     }
 
@@ -401,8 +409,8 @@ export function useKhatamState(slug: string) {
         setKhatamNum(target.khatam_num);
         await loadSlots(target.id);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to start new khatam");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to start new khatam"));
       return;
     }
 
@@ -417,8 +425,8 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.soloReset(slug);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to reset");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to reset"));
       return;
     }
 
@@ -434,8 +442,8 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.soloDelete(slug);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to delete");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to delete"));
       return;
     }
 
@@ -463,26 +471,27 @@ export function useKhatamState(slug: string) {
   }, [slug, adminPin]);
 
   const tryAdmin = async () => {
+    if (!adminPin.trim()) {
+      setAdminErr("Enter your PIN.");
+      return;
+    }
     try {
       const { valid } = await api.verifyPin(slug, adminPin);
       if (valid) {
         setAdminMode(true);
         setAdminErr("");
         storeAdminPin(slug, adminPin);
-        toast.success("Admin mode active");
-        // Load participants and sync claim limit input on unlock
+        // Load participants on unlock (claim limit input is synced by the effect below)
         try {
           const { participants: list } = await api.adminGetParticipants(slug, adminPin);
           setParticipants(list);
         } catch { /* non-fatal */ }
-        const current = khatams.find(k => k.id === selectedKhatamId);
-        if (current) setClaimLimitInput(current.claim_limit ?? 8);
       } else {
-        setAdminErr("Incorrect pin");
+        setAdminErr("That PIN is incorrect.");
         clearAdminPin(slug);
       }
     } catch {
-      setAdminErr("Failed to verify pin");
+      setAdminErr("Couldn't check the PIN. Please try again.");
     }
   };
 
@@ -490,9 +499,9 @@ export function useKhatamState(slug: string) {
   useEffect(() => {
     const stored = getStoredAdminPin(slug);
     if (!stored || adminMode) return;
-    setAdminPin(stored);
     api.verifyPin(slug, stored).then(({ valid }) => {
       if (valid) {
+        setAdminPin(stored);
         setAdminMode(true);
         api.adminGetParticipants(slug, stored).then(({ participants: list }) => {
           setParticipants(list);
@@ -500,7 +509,8 @@ export function useKhatamState(slug: string) {
       } else {
         clearAdminPin(slug);
       }
-    }).catch(() => clearAdminPin(slug));
+    }).catch(() => clearAdminPin(slug))
+      .finally(() => setAdminRestoring(false));
   }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const adminSetStatus = async (st: StatusKey, assignedTo?: string, juzOverride?: number, qOverride?: number) => {
@@ -510,13 +520,14 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.adminSetStatus(slug, adminPin, juz, q, st, assignedTo, selectedKhatamId ?? undefined);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update status");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to update status"));
       return;
     }
 
-    const label = assignedTo ? `${COLORS[st].label} → ${assignedTo}` : `Set to ${COLORS[st].label}`;
-    toast(label);
+    toast(assignedTo
+      ? `Juz ${juz} ${Q_SHORT[q - 1]}: ${COLORS[st].label.toLowerCase()} · ${assignedTo}`
+      : `Juz ${juz} ${Q_SHORT[q - 1]}: ${COLORS[st].label.toLowerCase()}`);
     await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
@@ -526,13 +537,14 @@ export function useKhatamState(slug: string) {
 
     try {
       await api.adminAssignJuz(slug, adminPin, juz, st, assignedTo, selectedKhatamId ?? undefined);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to assign Juz");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to assign Juz"));
       return;
     }
 
-    const label = assignedTo ? `Juz ${juz} → ${assignedTo}` : `Juz ${juz} set to ${COLORS[st].label}`;
-    toast(label);
+    toast(assignedTo
+      ? `Juz ${juz}: ${COLORS[st].label.toLowerCase()} · ${assignedTo}`
+      : `Juz ${juz}: ${COLORS[st].label.toLowerCase()}`);
     await loadSlots(selectedKhatamId!);
     await loadKhatams();
   };
@@ -541,8 +553,8 @@ export function useKhatamState(slug: string) {
     if (!adminMode) return;
     try {
       await api.adminSetClaimLimit(slug, adminPin, claimLimitInput, selectedKhatamId ?? undefined);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update claim limit");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to update claim limit"));
       return;
     }
     toast.success(`Claim limit set to ${claimLimitInput}`);
@@ -787,8 +799,8 @@ export function useKhatamState(slug: string) {
           ? prev
           : [...prev, { name: name.trim(), claim_limit: null }],
       );
-    } catch (e: any) {
-      toast.error(e.message || "Failed to add participant");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to add participant"));
     }
   };
 
@@ -797,8 +809,8 @@ export function useKhatamState(slug: string) {
     try {
       await api.adminRemoveParticipant(slug, adminPin, name);
       setParticipants(prev => prev.filter(p => p.name !== name));
-    } catch (e: any) {
-      toast.error(e.message || "Failed to remove participant");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to remove participant"));
     }
   };
 
@@ -810,8 +822,8 @@ export function useKhatamState(slug: string) {
         p.name === name ? { ...p, claim_limit: limit } : p
       ));
       toast.success(limit ? `${name}'s limit set to ${limit}` : `${name} now uses the default limit`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update participant limit");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to update participant limit"));
     }
   };
 
@@ -822,22 +834,23 @@ export function useKhatamState(slug: string) {
     setAdminPin("");
     setParticipants([]);
     clearAdminPin(slug);
-    toast("Admin mode off");
   };
 
   const adminResetAllToAvailable = async () => {
     if (!selectedKhatamId || !adminMode) return;
-    const confirmed = window.confirm("Reset ALL quarters in this khatam to Available? This cannot be undone.");
+    const confirmed = window.confirm(
+      `Reset every quarter in "${khatamName || `Khatam ${khatamNum}`}" to available? Names and progress will be cleared. This cannot be undone.`
+    );
     if (!confirmed) return;
 
     try {
       await api.adminResetAll(slug, adminPin, selectedKhatamId);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to reset slots to available");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to reset slots to available"));
       return;
     }
 
-    toast.success("All quarters reset to Available");
+    toast.success("All quarters reset to available");
     await loadSlots(selectedKhatamId);
     await loadKhatams();
   };
@@ -845,38 +858,39 @@ export function useKhatamState(slug: string) {
   const adminResetJuzToAvailable = async (juzOverride?: number) => {
     const juz = juzOverride ?? adminSelected?.juz;
     if (!selectedKhatamId || !juz || !adminMode) return;
-    const confirmed = window.confirm(`Reset all quarters in Juz ${juz} to Available?`);
+    const confirmed = window.confirm(`Reset all 4 quarters of Juz ${juz} to available? Their names will be cleared.`);
     if (!confirmed) return;
 
     try {
       await api.adminResetJuz(slug, adminPin, juz, selectedKhatamId);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to reset Juz to available");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to reset Juz to available"));
       return;
     }
 
-    toast.success(`All quarters in Juz ${juz} reset to Available`);
+    toast.success(`Juz ${juz} reset to available`);
     await loadSlots(selectedKhatamId);
     await loadKhatams();
   };
 
   const adminDeleteKhatam = async () => {
     if (!selectedKhatamId || !adminMode) return;
+    const label = khatamName || `Khatam ${khatamNum}`;
     const confirmed = window.confirm(
-      `Permanently delete Khatam #${khatamNum} and all its slots? This cannot be undone.`
+      `Permanently delete "${label}" and all its progress? This cannot be undone.`
     );
     if (!confirmed) return;
 
     try {
       await api.adminDelete(slug, adminPin, selectedKhatamId);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to delete khatam");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to delete khatam"));
       return;
     }
 
     setAdminSelected(null);
     setModal(null);
-    toast.success(`Khatam #${khatamNum} deleted`);
+    toast.success(`"${label}" deleted`);
     const infos = await loadKhatams();
     const target = getPreferredKhatam(infos);
     if (target) {
@@ -896,8 +910,8 @@ export function useKhatamState(slug: string) {
       const result = await api.adminToggleGlobeNames(slug, adminPin, selectedKhatamId ?? undefined);
       toast.success(result.show_names_on_globe ? "Names shown on globe" : "Names hidden on globe");
       await loadKhatams();
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to update"));
     }
   };
 
@@ -925,7 +939,7 @@ export function useKhatamState(slug: string) {
     locationCountry: selectedKhatamInfo?.location_country ?? null,
     adminMode, adminSelected, setAdminSelected,
     adminDrawer, setAdminDrawer,
-    adminPin, setAdminPin, adminErr,
+    adminPin, setAdminPin, adminErr, adminRestoring,
     newKhatamName, setNewKhatamName,
     participants,
     claimLimitInput, setClaimLimitInput,

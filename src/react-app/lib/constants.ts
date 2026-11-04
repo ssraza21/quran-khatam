@@ -14,6 +14,6 @@ export const Q_SHORT = ["Q1", "Q2", "Q3", "Q4"];
 
 export const COLORS: Record<StatusKey, StatusColor> = {
   av: { bg: "#FFFFFF", border: "#E0E0E0", text: "#4A4A4A", accent: "#8B0000", accentBg: "#FFF5F5", label: "Available" },
-  cl: { bg: "#FFFDE7", border: "#F9A825", text: "#5D4037", accent: "#F57F17", accentBg: "#FFF8E1", label: "In Progress" },
-  dn: { bg: "#E8F5E9", border: "#2E7D32", text: "#1B5E20", accent: "#2E7D32", accentBg: "#C8E6C9", label: "Completed" },
+  cl: { bg: "#FFFDE7", border: "#F9A825", text: "#5D4037", accent: "#F57F17", accentBg: "#FFF8E1", label: "Claimed" },
+  dn: { bg: "#E8F5E9", border: "#2E7D32", text: "#1B5E20", accent: "#2E7D32", accentBg: "#C8E6C9", label: "Done" },
 };

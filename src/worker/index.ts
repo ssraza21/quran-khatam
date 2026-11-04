@@ -259,14 +259,22 @@ async function quranGoalAcceptingClaims(
 app.get("/api/globe", async (c) => {
   const db = createServiceClient(c.env);
 
-  // Fetch all completed slots for khatams that have a location set, most recent first
-  const { data: rows, error } = await db
-    .from("slots")
-    .select("juz, q, claimed_by, done_at, khatams!inner(name, location_city, location_country, location_lat, location_lng, show_names_on_globe)")
-    .eq("status", "dn")
-    .not("khatams.location_lat", "is", null)
-    .order("done_at", { ascending: false })
-    .limit(500);
+  // Most recent completed slots for khatams that have a location set (markers + feed),
+  // plus an exact count, since the row query is capped.
+  const [{ data: rows, error }, { count }] = await Promise.all([
+    db
+      .from("slots")
+      .select("juz, q, claimed_by, done_at, khatams!inner(name, location_city, location_country, location_lat, location_lng, show_names_on_globe)")
+      .eq("status", "dn")
+      .not("khatams.location_lat", "is", null)
+      .order("done_at", { ascending: false })
+      .limit(500),
+    db
+      .from("slots")
+      .select("id, khatams!inner(location_lat)", { count: "exact", head: true })
+      .eq("status", "dn")
+      .not("khatams.location_lat", "is", null),
+  ]);
 
   if (error) return c.json({ error: "Failed to fetch globe data" }, 500);
 
@@ -321,7 +329,7 @@ app.get("/api/globe", async (c) => {
   return c.json({
     markers: Array.from(markerMap.values()),
     recent,
-    total_completions: completions.length,
+    total_completions: count ?? completions.length,
     total_locations: markerMap.size,
   });
 });

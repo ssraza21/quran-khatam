@@ -31,16 +31,19 @@ quran-khatam/
 ├── src/
 │   ├── react-app/               # Frontend SPA
 │   │   ├── components/
-│   │   │   ├── khatam/          # Domain components (JuzRow, QCard, SlotDrawer, KhatamSelector)
-│   │   │   ├── layout/          # Layout, Navbar, Footer
-│   │   │   └── ui/              # Generic UI primitives (shadcn-based)
-│   │   ├── pages/               # LandingPage, KhatamPage, MetricsPage
+│   │   │   ├── khatam/          # Domain components (JuzGrid, JuzDrawer, KhatamPicker, ShareDrawer, Admin*)
+│   │   │   ├── metrics/         # Progress page building blocks (KhatamProgress, Activity, CampaignGoals)
+│   │   │   ├── layout/          # Layout, Navbar, Footer, PageHeader, CampaignTabs, LogoMark
+│   │   │   └── ui/              # Generic UI primitives (shadcn-based, drawer, toasts, globe)
+│   │   ├── pages/               # Landing, CreateKhatam, CampaignDirectory, CampaignOverview, Khatam (tracker),
+│   │   │                        # SurahGoal, Metrics (progress), Admin, Globe, NotFound
 │   │   ├── hooks/
 │   │   │   └── useKhatamState.ts  # All client state & Supabase subscriptions
 │   │   ├── lib/
 │   │   │   ├── api.ts           # Typed API client (fetch wrappers)
 │   │   │   ├── constants.ts     # JUZ_NAMES, Q_LABELS, COLORS
-│   │   │   ├── helpers.ts       # makeDummySlots, timeAgo, isStale
+│   │   │   ├── helpers.ts       # khatamLabel, timeAgo, WhatsApp message builder
+│   │   │   ├── ui.ts            # Shared class names: ui.input/label/card, btn(variant, size)
 │   │   │   ├── supabase.ts      # Supabase anon client (read-only)
 │   │   │   └── types.ts         # Slot, StatusKey, KhatamPublic interfaces
 │   │   ├── App.tsx              # Router setup
@@ -175,7 +178,19 @@ The Worker validates PINs via `verifyAdmin()` which calls `lib/pin.ts`.
   - `cl` — claimed (someone is reading it)
   - `dn` — done (completed)
 - **Slug**: URL-friendly identifier for a khatam group (e.g. `family-ramadan-2025`). A slug can host multiple sequential khatams (`khatam_num` 1, 2, 3…).
-- **Stale claim**: A slot claimed more than 1 hour ago and still `cl` (see `isStale()` in `helpers.ts`).
+
+### Frontend routes
+| Path | Page |
+|---|---|
+| `/` | Landing |
+| `/new` | Create a group or personal khatam (`?mode=personal`) |
+| `/campaigns` | Public directory; also accepts a pasted link or a private slug |
+| `/k/:slug` | Campaign overview (redirects to the tracker for single-khatam campaigns without Surah goals) |
+| `/k/:slug/tracker` | Pick a Juz/quarter, mark parts done |
+| `/k/:slug/goals/:goalId` | Surah recitation goal |
+| `/k/:slug/metrics` | Live progress dashboard |
+| `/k/:slug/admin` | Organizer admin (Assign / Khatams / Settings) |
+| `/globe` | World map |
 
 ---
 
@@ -185,9 +200,11 @@ The Worker validates PINs via `verifyAdmin()` which calls `lib/pin.ts`.
 - **State management**: All async state lives in `useKhatamState.ts`. Do not add parallel state hooks for khatam data.
 - **API calls**: Always go through `src/react-app/lib/api.ts` — never call `fetch` directly in components.
 - **Supabase subscriptions**: The `useKhatamState` hook subscribes to Postgres Changes on the `slots` table. Changes from the Worker auto-propagate to all connected clients.
-- **Colors**: Status colors are defined in `constants.ts` (`COLORS.av`, `COLORS.cl`, `COLORS.dn`). Use these — do not hardcode colors for slot status.
+- **Colors**: Status colors are defined in `constants.ts` (`COLORS.av`, `COLORS.cl`, `COLORS.dn`; labels Available / Claimed / Done). Use these — do not hardcode colors for slot status. Progress toward "done" is always green (`bg-success`).
 - **Imports**: Use the `@/` alias for all imports within `src/react-app/`.
-- **Styling**: Tailwind utility classes preferred. The brand primary color is `#8B0000` (dark red). Avoid inline styles except for dynamic values.
+- **Styling**: Tailwind utility classes. Brand red is the `primary` token (`bg-primary`, `text-primary`, `hover:bg-primary-dark`); neutrals are `stone-*`. Use `ui`/`btn()` from `lib/ui.ts` for inputs, labels, cards and buttons. Headings use `font-heading` (Playfair) only for page and section titles; Arabic text uses `font-arabic`. Avoid inline styles except for dynamic values.
+- **Page structure**: Pages start with `PageHeader`; pages inside a campaign add `CampaignTabs` as its child. Mobile first: test at 360–390px with no horizontal scroll, keep inputs at 16px text and touch targets ≥40px.
+- **Copy**: Sentence case, plain language, no emoji, no uppercase letter-spaced labels. Refer to a khatam by its name (`khatamLabel()`), falling back to "Khatam N".
 - **No test suite** exists currently. If adding tests, use Vitest (compatible with Vite).
 
 ### Backend (Worker)

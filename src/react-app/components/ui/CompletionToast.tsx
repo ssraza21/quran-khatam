@@ -1,7 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { Check, X } from "lucide-react";
 import { supabasePublic } from "@/lib/supabase";
+import { api } from "@/lib/api";
 import { JUZ_NAMES, Q_SHORT } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 interface ToastData {
   id: string;
@@ -12,291 +15,142 @@ interface ToastData {
 }
 
 const ToastContext = createContext<Record<string, never>>({});
+// eslint-disable-next-line react-refresh/only-export-components
 export function useCompletionToast() { return useContext(ToastContext); }
 
 const COMPACT_MS = 5000;
 const PROMINENT_MS = 7000;
+const EXIT_MS = 250;
+const SWIPE_X = 80;
+const SWIPE_UP = 50;
+const HISTORY_REFRESH_MS = 10_000;
 
-// ─── Compact toast (non-metrics pages) ───────────────────────────────────────
+// ─── One toast ───────────────────────────────────────────────────────────────
 
-function CompactToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () => void }) {
-  const [exiting, setExiting] = useState(false);
-  const [progress, setProgress] = useState(100);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const lockAxis = useRef<"h" | "v" | null>(null);
+function CompletionToastCard({
+  toast,
+  prominent,
+  onDismiss,
+}: {
+  toast: ToastData;
+  prominent: boolean;
+  onDismiss: () => void;
+}) {
+  const [phase, setPhase] = useState<"enter" | "shown" | "exit">("enter");
+  const [paused, setPaused] = useState(false);
+  const [drag, setDrag] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const start = useRef({ x: 0, y: 0 });
+  const axis = useRef<"h" | "v" | null>(null);
 
   const exit = useCallback(() => {
-    setExiting(true);
-    setTimeout(onDismiss, 380);
+    setPhase("exit");
+    setTimeout(onDismiss, EXIT_MS);
   }, [onDismiss]);
 
+  // Enter on the next frame so the transition runs.
   useEffect(() => {
-    const t0 = Date.now();
-    const tick = setInterval(() => {
-      setProgress(Math.max(0, 100 - ((Date.now() - t0) / COMPACT_MS) * 100));
-    }, 40);
-    const timer = setTimeout(exit, COMPACT_MS);
-    return () => { clearInterval(tick); clearTimeout(timer); };
-  }, [exit]);
+    const raf = requestAnimationFrame(() => setPhase("shown"));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    lockAxis.current = null;
+  // Auto-dismiss, paused while hovered or being dragged.
+  useEffect(() => {
+    if (paused || dragging) return;
+    const timer = setTimeout(exit, prominent ? PROMINENT_MS : COMPACT_MS);
+    return () => clearTimeout(timer);
+  }, [exit, prominent, paused, dragging]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    start.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    axis.current = null;
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const dy = e.touches[0].clientY - touchStartY.current;
-    if (!lockAxis.current) {
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) lockAxis.current = "h";
-      else if (Math.abs(dy) > 5) lockAxis.current = "v";
+  const onTouchMove = (e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - start.current.x;
+    const dy = e.touches[0].clientY - start.current.y;
+    if (!axis.current) {
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) axis.current = "h";
+      else if (Math.abs(dy) > 5) axis.current = "v";
     }
-    if (lockAxis.current === "h" && dx > 0) {
-      e.preventDefault();
-      setIsDragging(true);
-      setDragX(dx);
+    if (axis.current === "h") {
+      setDragging(true);
+      setDrag({ x: dx, y: 0 });
+    } else if (axis.current === "v" && dy < 0) {
+      setDragging(true);
+      setDrag({ x: 0, y: dy });
     }
   };
 
-  const handleTouchEnd = () => {
-    if (dragX > 80) {
+  const onTouchEnd = () => {
+    if (Math.abs(drag.x) > SWIPE_X || drag.y < -SWIPE_UP) {
       exit();
     } else {
-      setDragX(0);
-      setIsDragging(false);
+      setDrag({ x: 0, y: 0 });
     }
+    setDragging(false);
   };
+
+  const distance = Math.max(Math.abs(drag.x) / 180, Math.abs(drag.y) / 120);
+  const quarter = Q_SHORT[toast.q - 1];
 
   return (
     <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{
-        transform: `translateX(${dragX}px)`,
-        opacity: isDragging ? Math.max(0.1, 1 - dragX / 180) : 1,
-        transition: !isDragging ? "transform 0.3s ease, opacity 0.3s ease" : "none",
-      }}
+      className={cn(
+        "pointer-events-auto w-full transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none",
+        phase === "shown" ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
+      )}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
     >
       <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
         onClick={exit}
-        style={{
-          width: 320,
-          background: "#FFFFFF",
-          borderRadius: 16,
-          border: "1px solid #E8F5E9",
-          boxShadow: "0 8px 28px rgba(0,0,0,0.10), 0 1px 6px rgba(0,0,0,0.06)",
-          overflow: "hidden",
-          cursor: "pointer",
-          animation: exiting
-            ? "ctSlideOut 0.38s cubic-bezier(0.4,0,1,1) forwards"
-            : "ctSlideIn 0.44s cubic-bezier(0.34,1.56,0.64,1) forwards",
-        }}
+        className={cn("cursor-pointer touch-pan-y select-none", !dragging && "transition-[opacity,transform] duration-200 motion-reduce:transition-none")}
+        style={
+          drag.x || drag.y
+            ? { transform: `translate(${drag.x}px, ${drag.y}px)`, opacity: Math.max(0.15, 1 - distance) }
+            : undefined
+        }
       >
-
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 14px 12px 16px" }}>
-          {/* Check badge */}
-          <div style={{
-            width: 32, height: 32, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-            background: "#E8F5E9", display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M2 6.5L5.2 9.5L11 3.5" stroke="#2E7D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <span style={{
-                fontFamily: "'Playfair Display', serif",
-                fontSize: 14, fontWeight: 700,
-                color: "#1A1A1A", overflow: "hidden",
-                whiteSpace: "nowrap", textOverflow: "ellipsis",
-              }}>
-                {toast.name}
-              </span>
+        {prominent ? (
+          <div className="flex items-center gap-4 rounded-2xl bg-success px-4 py-3.5 text-white shadow-lg shadow-stone-900/10 sm:px-6 sm:py-5">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/15 sm:size-14">
+              <Check className="size-5 sm:size-7" strokeWidth={2.5} aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-lg font-semibold leading-tight sm:text-2xl">{toast.name}</p>
+              <p className="mt-0.5 text-sm text-white/85 sm:text-base">
+                completed Juz {toast.juz} · {quarter}
+                <span lang="ar" className="ml-2 font-arabic text-white/75">{toast.juzName}</span>
+              </p>
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: "#6B7280", lineHeight: 1.4 }}>
-              Completed{" "}
-              <strong style={{ color: "#374151" }}>Juz {toast.juz}</strong>
-              {" · "}{Q_SHORT[toast.q - 1]}
+            <div className="hidden shrink-0 border-l border-white/20 pl-5 text-center sm:block">
+              <p lang="ar" dir="rtl" className="font-arabic text-2xl leading-snug">بارك الله فيك</p>
+              <p className="text-xs text-white/70">May Allah bless you</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white py-2.5 pl-3 pr-1.5 shadow-md shadow-stone-900/5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success-light text-success">
+              <Check size={16} strokeWidth={2.5} aria-hidden />
+            </span>
+            <p className="min-w-0 flex-1 text-sm leading-snug text-stone-600">
+              <span className="font-semibold text-stone-900">{toast.name}</span> completed Juz {toast.juz} · {quarter}
+              <span lang="ar" className="ml-1.5 font-arabic text-stone-500">{toast.juzName}</span>
             </p>
-            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9CA3AF", fontFamily: "'Amiri', serif" }}>
-              {toast.juzName}
-            </p>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={e => { e.stopPropagation(); exit(); }}
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+            >
+              <X size={16} aria-hidden />
+            </button>
           </div>
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ height: 2, background: "#F3F4F6" }}>
-          <div style={{
-            height: "100%", width: `${progress}%`,
-            background: "linear-gradient(90deg, #66BB6A, #2E7D32)",
-            transition: "width 40ms linear",
-          }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Prominent toast (MetricsPage) ───────────────────────────────────────────
-
-function ProminentToast({ toast, onDismiss }: { toast: ToastData; onDismiss: () => void }) {
-  const [exiting, setExiting] = useState(false);
-  const [progress, setProgress] = useState(100);
-  const [dragY, setDragY] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const lockAxis = useRef<"h" | "v" | null>(null);
-
-  const exit = useCallback(() => {
-    setExiting(true);
-    setTimeout(onDismiss, 480);
-  }, [onDismiss]);
-
-  useEffect(() => {
-    const t0 = Date.now();
-    const tick = setInterval(() => {
-      setProgress(Math.max(0, 100 - ((Date.now() - t0) / PROMINENT_MS) * 100));
-    }, 40);
-    const timer = setTimeout(exit, PROMINENT_MS);
-    return () => { clearInterval(tick); clearTimeout(timer); };
-  }, [exit]);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    lockAxis.current = null;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const dy = e.touches[0].clientY - touchStartY.current;
-    if (!lockAxis.current) {
-      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 5) lockAxis.current = "v";
-      else if (Math.abs(dx) > 5) lockAxis.current = "h";
-    }
-    if (lockAxis.current === "v" && dy < 0) {
-      e.preventDefault();
-      setIsDragging(true);
-      setDragY(dy);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (dragY < -60) {
-      exit();
-    } else {
-      setDragY(0);
-      setIsDragging(false);
-    }
-  };
-
-  return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{
-        transform: `translateY(${dragY}px)`,
-        opacity: isDragging ? Math.max(0.1, 1 - Math.abs(dragY) / 120) : 1,
-        transition: !isDragging ? "transform 0.3s ease, opacity 0.3s ease" : "none",
-      }}
-    >
-      <div
-        onClick={exit}
-        style={{
-          position: "relative",
-          width: "min(620px, calc(100vw - 2.5rem))",
-          borderRadius: 20,
-          overflow: "hidden",
-          cursor: "pointer",
-          boxShadow: "0 24px 64px rgba(27,94,32,0.38), 0 4px 18px rgba(0,0,0,0.18)",
-          background: "linear-gradient(130deg, #1B5E20 0%, #2E7D32 55%, #388E3C 100%)",
-          animation: exiting
-            ? "ptSlideOut 0.48s cubic-bezier(0.4,0,1,1) forwards"
-            : "ptSlideDown 0.58s cubic-bezier(0.22,1,0.36,1) forwards",
-        }}
-      >
-        {/* Subtle pattern overlay */}
-        <div style={{
-          position: "absolute", inset: 0, opacity: 0.035, borderRadius: 20,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Cpath d='M30 0l30 30-30 30L0 30z' fill-opacity='0.3'/%3E%3C/g%3E%3C/svg%3E")`,
-        }} />
-
-        <div style={{ position: "relative", padding: "18px 22px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-
-            {/* Animated check circle */}
-            <div style={{
-              width: 54, height: 54, borderRadius: "50%", flexShrink: 0,
-              background: "rgba(255,255,255,0.15)",
-              border: "2px solid rgba(255,255,255,0.35)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              animation: "checkPop 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.18s both",
-            }}>
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                <path d="M3.5 11L9 16.5L18.5 6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
-            {/* Name + details */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                <span style={{
-                  fontFamily: "'Playfair Display', serif",
-                  fontSize: 22, fontWeight: 700, color: "white",
-                  lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {toast.name}
-                </span>
-              </div>
-              <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.5 }}>
-                Completed{" "}
-                <strong style={{ color: "white" }}>Juz {toast.juz}</strong>
-                {" · "}{Q_SHORT[toast.q - 1]}
-                {" · "}
-                <span style={{ fontFamily: "'Amiri', serif", fontSize: 14 }}>{toast.juzName}</span>
-              </p>
-            </div>
-
-            {/* Arabic blessing */}
-            <div style={{
-              flexShrink: 0, textAlign: "center",
-              paddingLeft: 18,
-              borderLeft: "1px solid rgba(255,255,255,0.18)",
-            }}>
-              <p style={{
-                fontFamily: "'Amiri', serif",
-                fontSize: 22, color: "rgba(255,255,255,0.92)",
-                margin: 0, lineHeight: 1.5,
-              }}>
-                بارك الله فيك
-              </p>
-              <p style={{
-                fontSize: 9, color: "rgba(255,255,255,0.45)",
-                margin: 0, letterSpacing: "0.09em", textTransform: "uppercase",
-              }}>
-                May Allah bless you
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ height: 3, background: "rgba(255,255,255,0.12)" }}>
-          <div style={{
-            height: "100%", width: `${progress}%`,
-            background: "rgba(255,255,255,0.55)",
-            transition: "width 40ms linear",
-          }} />
-        </div>
+        )}
       </div>
     </div>
   );
@@ -310,7 +164,6 @@ export function CompletionToastProvider({ children }: { children: React.ReactNod
   const isMetrics = location.pathname.includes("/metrics");
   const seenKeys = useRef(new Set<string>());
 
-  // Extract slug from the current URL
   const slugMatch = location.pathname.match(/^\/k\/([^/]+)/);
   const currentSlug = slugMatch?.[1] ?? null;
 
@@ -318,98 +171,73 @@ export function CompletionToastProvider({ children }: { children: React.ReactNod
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  // Subscribe to slot completions for the current khatam's slug
+  // Live completions for khatams in the current campaign only.
   useEffect(() => {
     if (!currentSlug) return;
+    let active = true;
+    let khatamIds = new Set<number>();
+    let lastFetch = 0;
+
+    const refreshIds = async () => {
+      lastFetch = Date.now();
+      try {
+        const history = await api.getHistory(currentSlug);
+        if (active) khatamIds = new Set(history.map(k => k.id));
+      } catch {
+        /* keep the previous set */
+      }
+    };
+    void refreshIds();
+
+    const show = (row: { juz: number; q: number; claimed_by: string | null; done_at: string | null; claimed_at: string | null }) => {
+      const key = `${row.juz}-${row.q}-${row.claimed_by ?? "anon"}-${row.done_at ?? row.claimed_at}`;
+      if (seenKeys.current.has(key)) return;
+      seenKeys.current.add(key);
+      setToasts(prev => [
+        { id: `${key}-${Date.now()}`, name: row.claimed_by || "Someone", juz: row.juz, juzName: JUZ_NAMES[row.juz - 1] ?? "", q: row.q },
+        ...prev,
+      ].slice(0, 2));
+    };
 
     const channel = supabasePublic
       .channel(`completion-toasts-${currentSlug}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "khatam_public", table: "slots" },
-        (payload: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        async (payload: any) => {
           const row = payload.new;
-          if (row.status !== "dn") return;
-
-          const key = `${row.juz}-${row.q}-${row.claimed_by ?? "anon"}-${row.done_at ?? row.claimed_at}`;
-          if (seenKeys.current.has(key)) return;
-          seenKeys.current.add(key);
-
-          const toast: ToastData = {
-            id: `${key}-${Date.now()}`,
-            name: row.claimed_by || "Someone",
-            juz: row.juz,
-            juzName: JUZ_NAMES[row.juz - 1] ?? "",
-            q: row.q,
-          };
-
-          setToasts(prev => [toast, ...prev].slice(0, 2));
-        }
+          if (row?.status !== "dn") return;
+          const id = Number(row.khatam_id);
+          // A khatam added after we loaded the list: refresh once before deciding.
+          if (!khatamIds.has(id) && Date.now() - lastFetch > HISTORY_REFRESH_MS) await refreshIds();
+          if (active && khatamIds.has(id)) show(row);
+        },
       )
       .subscribe();
 
-    return () => { supabasePublic.removeChannel(channel); };
+    return () => {
+      active = false;
+      void supabasePublic.removeChannel(channel);
+    };
   }, [currentSlug]);
 
   return (
     <ToastContext.Provider value={{}}>
-      <style>{`
-        @keyframes ctSlideIn {
-          from { opacity: 0; transform: translateX(110%); }
-          to   { opacity: 1; transform: translateX(0);    }
-        }
-        @keyframes ctSlideOut {
-          from { opacity: 1; transform: translateX(0);    }
-          to   { opacity: 0; transform: translateX(110%); }
-        }
-        @keyframes ptSlideDown {
-          from { opacity: 0; transform: translateY(-110%) scale(0.96); }
-          to   { opacity: 1; transform: translateY(0)     scale(1);    }
-        }
-        @keyframes ptSlideOut {
-          from { opacity: 1; transform: translateY(0)    scale(1);    }
-          to   { opacity: 0; transform: translateY(-70%) scale(0.97); }
-        }
-        @keyframes checkPop {
-          from { opacity: 0; transform: scale(0.4); }
-          to   { opacity: 1; transform: scale(1);   }
-        }
-      `}</style>
-
       {children}
-
-      {/* Compact stack — top-right, non-metrics */}
-      {!isMetrics && (
-        <div style={{
-          position: "fixed", top: 20, right: 20,
-          display: "flex", flexDirection: "column", gap: 10,
-          zIndex: 9999, pointerEvents: "none",
-          alignItems: "flex-end",
-        }}>
-          {toasts.map(t => (
-            <div key={t.id} style={{ pointerEvents: "auto" }}>
-              <CompactToast toast={t} onDismiss={() => dismiss(t.id)} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Prominent stack — top-center, MetricsPage */}
-      {isMetrics && (
-        <div style={{
-          position: "fixed", top: 20,
-          left: "50%", transform: "translateX(-50%)",
-          display: "flex", flexDirection: "column", gap: 10,
-          zIndex: 9999, pointerEvents: "none",
-          alignItems: "center",
-        }}>
-          {toasts.map(t => (
-            <div key={t.id} style={{ pointerEvents: "auto" }}>
-              <ProminentToast toast={t} onDismiss={() => dismiss(t.id)} />
-            </div>
-          ))}
-        </div>
-      )}
+      <div
+        aria-live="polite"
+        className={cn(
+          "pointer-events-none fixed inset-x-3 top-3 z-[100] flex flex-col gap-2",
+          isMetrics
+            ? "items-center sm:top-5 [&>*]:max-w-[640px]"
+            : "sm:left-auto sm:right-5 sm:top-5 sm:w-[340px]",
+        )}
+      >
+        {toasts.map(t => (
+          <CompletionToastCard key={t.id} toast={t} prominent={isMetrics} onDismiss={() => dismiss(t.id)} />
+        ))}
+      </div>
     </ToastContext.Provider>
   );
 }

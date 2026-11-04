@@ -1,34 +1,17 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import type { Slot, StatusKey } from "@/lib/types";
-import { JUZ_NAMES, COLORS } from "@/lib/constants";
+import type { Slot, StatusKey, CampaignGoal } from "@/lib/types";
 import { supabasePublic } from "@/lib/supabase";
-import { api } from "@/lib/api";
+import { api, type KhatamMeta } from "@/lib/api";
 import { getSurahName } from "@/lib/surahs";
-import type { CampaignGoal } from "@/lib/types";
-
-function CircularProgress({ value, size = 200, stroke = 12 }: { value: number; size?: number; stroke?: number }) {
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / 100) * circumference;
-
-  return (
-    <svg width={size} height={size} className="transform -rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={radius}
-        stroke="#E0E0E0" strokeWidth={stroke} fill="none" />
-      <circle cx={size / 2} cy={size / 2} r={radius}
-        stroke="url(#progressGradient)" strokeWidth={stroke} fill="none"
-        strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset}
-        className="transition-all duration-1000 ease-out" />
-      <defs>
-        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#8B0000" />
-          <stop offset="100%" stopColor="#B71C1C" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
+import { ui, btn } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+import PageHeader from "@/components/layout/PageHeader";
+import CampaignTabs from "@/components/layout/CampaignTabs";
+import { QuarterProgress, JuzMap } from "@/components/metrics/KhatamProgress";
+import { TopReaders, RecentActivity } from "@/components/metrics/Activity";
+import { CampaignGoals, type GoalTileData } from "@/components/metrics/CampaignGoals";
+import { shortDate } from "@/components/metrics/format";
 
 interface DbSlot {
   khatam_id: string | number;
@@ -56,41 +39,75 @@ function upsertSlot(prev: Slot[], next: Slot) {
   if (existingIndex === -1) {
     return [...prev, next].sort((a, b) => a.juz - b.juz || a.q - b.q);
   }
-
   const updated = [...prev];
   updated[existingIndex] = next;
   return updated;
 }
 
+const isFinished = (k: KhatamMeta) => !!k.completed_at || (k.total != null && (k.done ?? 0) >= k.total);
+
+function newestKhatam(list: KhatamMeta[]) {
+  return list.reduce((newest, k) => (k.khatam_num > newest.khatam_num ? k : newest), list[0]);
+}
+
+/** Same default as the tracker: the first started, unfinished khatam, then any unfinished one, then the newest. */
+function preferredKhatam(list: KhatamMeta[]) {
+  const byRound = [...list].sort((a, b) => a.khatam_num - b.khatam_num);
+  return byRound.find(k => k.started && !isFinished(k)) ?? byRound.find(k => !isFinished(k)) ?? newestKhatam(list);
+}
+
+// Shared with the tracker so both tabs show the same khatam.
+const storageKey = (slug: string) => `selectedKhatamId:${slug}`;
+function readStoredKhatam(slug: string): number | null {
+  try {
+    const v = localStorage.getItem(storageKey(slug));
+    return v ? Number(v) : null;
+  } catch {
+    return null;
+  }
+}
+function storeKhatam(slug: string, id: number) {
+  try {
+    localStorage.setItem(storageKey(slug), String(id));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export default function MetricsPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug = "" } = useParams<{ slug: string }>();
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [khatams, setKhatams] = useState<{ id: string | number; khatam_num: number; name: string | null }[]>([]);
-  const [selectedKhatamId, setSelectedKhatamId] = useState<string | number | null>(null);
-  const [khatamName, setKhatamName] = useState("");
+  const [slotsKhatamId, setSlotsKhatamId] = useState<number | null>(null);
+  const [, setTick] = useState(0); // re-render so relative times stay fresh
+  const [khatams, setKhatams] = useState<KhatamMeta[]>([]);
+  const [selectedKhatamId, setSelectedKhatamId] = useState<number | null>(null);
   const [campaignName, setCampaignName] = useState("");
   const [campaignGoals, setCampaignGoals] = useState<CampaignGoal[]>([]);
   const [notFound, setNotFound] = useState(false);
-
-  const khatamNum = khatams.find(k => k.id === selectedKhatamId)?.khatam_num ?? 1;
-  const latestKhatamId = khatams.length > 0 ? khatams[khatams.length - 1].id : null;
+  const newestIdRef = useRef<number | null>(null);
 
   const loadKhatams = useCallback(async () => {
     try {
-      const history = await api.getHistory(slug ?? "");
-      const data = [...history].sort((a, b) => a.khatam_num - b.khatam_num);
-      if (data.length === 0) throw new Error("Not found");
-      const newestKhatamId = data[data.length - 1].id;
-      setKhatams(data);
-      setKhatamName(data[data.length - 1].name ?? "");
-      setCampaignName(data[data.length - 1].campaign_name ?? data[data.length - 1].name ?? "");
+      const history = await api.getHistory(slug);
+      if (history.length === 0) throw new Error("Not found");
+      const list = [...history].sort(
+        (a, b) => (a.display_order ?? a.khatam_num) - (b.display_order ?? b.khatam_num) || a.khatam_num - b.khatam_num,
+      );
+      const newest = newestKhatam(list);
+      const prevNewest = newestIdRef.current;
+      newestIdRef.current = newest.id;
+
+      setKhatams(list);
+      setCampaignName(newest.campaign_name ?? newest.name ?? "");
       setNotFound(false);
       setSelectedKhatamId(prev => {
-        if (prev == null) return newestKhatamId;
-        const stillExists = data.some(k => k.id === prev);
-        if (!stillExists) return newestKhatamId;
-        return prev === latestKhatamId ? newestKhatamId : prev;
+        if (prev != null && list.some(k => k.id === prev)) {
+          // A screen left on the newest round follows the organiser into the next one.
+          if (prevNewest != null && prev === prevNewest && newest.id !== prevNewest) return newest.id;
+          return prev;
+        }
+        const stored = readStoredKhatam(slug);
+        return list.find(k => k.id === stored)?.id ?? preferredKhatam(list).id;
       });
     } catch {
       setKhatams([]);
@@ -98,23 +115,29 @@ export default function MetricsPage() {
       setSlots([]);
       setNotFound(true);
     }
-  }, [slug, latestKhatamId]);
+  }, [slug]);
 
-  const loadSlots = useCallback(async () => {
+  useEffect(() => { void loadKhatams(); }, [loadKhatams]);
+
+  // Slots for the selected khatam
+  useEffect(() => {
     if (!selectedKhatamId) return;
-    const { data } = await supabasePublic
+    let cancelled = false;
+    void supabasePublic
       .from("slots")
       .select("*")
       .eq("khatam_id", selectedKhatamId)
       .order("juz")
-      .order("q");
-    if (data) {
-      setSlots((data as DbSlot[]).map(dbToSlot));
-    }
+      .order("q")
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSlots((data as DbSlot[]).map(dbToSlot));
+        setSlotsKhatamId(selectedKhatamId);
+      });
+    return () => { cancelled = true; };
   }, [selectedKhatamId]);
 
-  useEffect(() => { loadKhatams(); }, [loadKhatams]);
-  useEffect(() => { loadSlots(); }, [loadSlots]);
+  // Campaign goals (Surah goals + the khatam count goal), live
   useEffect(() => {
     if (!slug) return;
     const loadGoals = () => api.getCampaignGoals(slug).then(result => setCampaignGoals(result.goals)).catch(() => {});
@@ -133,370 +156,217 @@ export default function MetricsPage() {
     const channel = supabasePublic
       .channel(`metrics-khatams-${slug}`)
       .on("postgres_changes", { event: "*", schema: "khatam_public", table: "khatams" }, () => {
-        loadKhatams();
+        void loadKhatams();
       })
       .subscribe();
-
-    return () => { supabasePublic.removeChannel(channel); };
+    return () => { void supabasePublic.removeChannel(channel); };
   }, [slug, loadKhatams]);
 
   // Realtime: apply slot changes immediately
   useEffect(() => {
     if (!selectedKhatamId) return;
-
     const channel = supabasePublic
       .channel(`metrics-slots-${selectedKhatamId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "khatam_public", table: "slots", filter: `khatam_id=eq.${selectedKhatamId}` },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
           if (payload.eventType === "DELETE") {
             const oldRow = payload.old as DbSlot;
             setSlots(prev => prev.filter(s => !(s.juz === oldRow.juz && s.q === oldRow.q)));
             return;
           }
-
-          const row = payload.new as DbSlot;
-          setSlots(prev => upsertSlot(prev, dbToSlot(row)));
-        }
+          setSlots(prev => upsertSlot(prev, dbToSlot(payload.new as DbSlot)));
+        },
       )
       .subscribe();
-
-    return () => { supabasePublic.removeChannel(channel); };
+    return () => { void supabasePublic.removeChannel(channel); };
   }, [selectedKhatamId]);
 
+  // Keep relative times fresh
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const timer = setInterval(() => setTick(t => t + 1), 30_000);
     return () => clearInterval(timer);
   }, []);
 
+  const selectKhatam = (id: number) => {
+    if (id === selectedKhatamId) return;
+    setSlots([]);
+    setSelectedKhatamId(id);
+    storeKhatam(slug, id);
+  };
+
+  const selected = khatams.find(k => k.id === selectedKhatamId) ?? null;
+  const isSolo = !!selected?.is_solo;
+  const slotsReady = selectedKhatamId != null && slotsKhatamId === selectedKhatamId;
   const done = slots.filter(s => s.status === "dn").length;
-  const prog = slots.filter(s => s.status === "cl").length;
-  const rem = 120 - done - prog;
+  const inProgress = slots.filter(s => s.status === "cl").length;
   const pct = Math.round((done / 120) * 100);
 
-  const juzData = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => {
-      const juz = i + 1;
-      const jSlots = slots.filter(s => s.juz === juz);
-      const jDone = jSlots.filter(s => s.status === "dn").length;
-      const jProg = jSlots.filter(s => s.status === "cl").length;
-      const quarters = [1, 2, 3, 4].map(q => {
-        const slot = jSlots.find(s => s.q === q);
-        return slot ? slot.status : "av";
+  const surahGoals = campaignGoals.filter(g => g.goal_type === "surah_recitation" && g.is_enabled);
+  const hideOverview = khatams.length <= 1 && surahGoals.length === 0;
+
+  const goalTiles = useMemo<GoalTileData[]>(() => {
+    const tiles: GoalTileData[] = [];
+    if (khatams.length > 1) {
+      const khatamGoal = campaignGoals.find(g => g.goal_type === "quran_khatam" && g.is_enabled);
+      tiles.push({
+        key: "khatams",
+        label: "Khatams completed",
+        unit: "khatams",
+        completed: khatamGoal?.completed ?? khatams.filter(isFinished).length,
+        target: khatamGoal?.target ?? khatams.length,
       });
-      return { juz, done: jDone, prog: jProg, total: 4, name: JUZ_NAMES[i], quarters };
-    });
-  }, [slots]);
+    }
+    for (const g of campaignGoals) {
+      if (g.goal_type !== "surah_recitation" || !g.is_enabled) continue;
+      tiles.push({
+        key: `surah-${g.id}`,
+        label: `Surah ${getSurahName(g.surah_number)}`,
+        unit: "recitations",
+        completed: g.completed,
+        target: g.target,
+        to: `/k/${slug}/goals/${g.id}`,
+      });
+    }
+    return tiles;
+  }, [campaignGoals, khatams, slug]);
 
-  const leaderboard = useMemo(() => {
-    const counts: Record<string, { completed: number; inProgress: number }> = {};
-    slots.forEach(s => {
-      if (s.by) {
-        if (!counts[s.by]) counts[s.by] = { completed: 0, inProgress: 0 };
-        if (s.status === "dn") counts[s.by].completed++;
-        else if (s.status === "cl") counts[s.by].inProgress++;
-      }
-    });
-    return Object.entries(counts)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.completed - a.completed || b.inProgress - a.inProgress);
-  }, [slots]);
-
-  const recentActivity = useMemo(() => {
-    return slots
-      .filter(s => s.done_at || s.at)
-      .sort((a, b) => {
-        const ta = new Date(a.done_at || a.at || 0).getTime();
-        const tb = new Date(b.done_at || b.at || 0).getTime();
-        return tb - ta;
-      })
-      .slice(0, 8);
-  }, [slots]);
-
-  const quarterColor = (status: string) => {
-    if (status === "dn") return "#43A047";
-    if (status === "cl") return "#F9A825";
-    return "#EEEEEE";
-  };
+  // Group the khatam picker so long campaigns stay scannable.
+  const khatamGroups = useMemo(() => {
+    const label = (k: KhatamMeta) => {
+      if (isFinished(k)) return `${k.name} · completed`;
+      const d = k.id === selectedKhatamId ? done : (k.done ?? 0);
+      return `${k.name} · ${d}/120`;
+    };
+    const groups = [
+      { label: "In progress", items: khatams.filter(k => !isFinished(k) && k.started !== false) },
+      { label: "Not started", items: khatams.filter(k => !isFinished(k) && k.started === false) },
+      { label: "Completed", items: khatams.filter(isFinished) },
+    ].filter(g => g.items.length > 0);
+    return groups.map(g => ({ ...g, items: g.items.map(k => ({ id: k.id, text: label(k) })) }));
+  }, [khatams, selectedKhatamId, done]);
 
   if (notFound) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}>
-            Khatam Not Found
-          </h2>
-          <p className="text-gray-500 text-sm mb-6">No khatam exists with the slug "{slug}".</p>
-          <Link to="/"
-            className="bg-[#8B0000] text-white px-6 py-2.5 rounded-full text-sm font-semibold no-underline hover:bg-[#6B0000] transition-colors">
-            Go Home
-          </Link>
-        </div>
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <h1 className="font-heading text-2xl font-semibold text-stone-900">Campaign not found</h1>
+        <p className="mt-2 text-sm text-stone-600">There is no khatam at “{slug}”. Check the link or start a new one.</p>
+        <Link to="/" className={cn(btn("primary", "md"), "mt-6")}>Go to home page</Link>
       </div>
     );
   }
 
+  const finishedOn = selected?.completed_at ? shortDate(selected.completed_at) : null;
+  const status =
+    done === 120
+      ? finishedOn ? `Completed ${finishedOn}` : "Completed"
+      : done === 0 && inProgress === 0
+        ? "Not started yet"
+        : "In progress";
+
   return (
     <>
-      {/* Hero Header */}
-      <header className="relative overflow-hidden text-white text-center py-10 px-5"
-        style={{ background: "linear-gradient(135deg, #8B0000 0%, #5A0000 100%)" }}>
-        <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Cpath d='M40 0l40 40-40 40L0 40z' fill-opacity='0.15'/%3E%3Cpath d='M40 10l30 30-30 30L10 40z' fill='none' stroke='%23fff' stroke-opacity='0.1'/%3E%3C/g%3E%3C/svg%3E")`
-          }}
-        />
-        <div className="relative max-w-[1200px] mx-auto">
-          <h1 className="text-[42px] mb-1 font-normal tracking-widest text-white"
-            style={{ fontFamily: "'Playfair Display', serif" }}>
-            {campaignName || khatamName || "Khatam"} Live Metrics
-          </h1>
+      <PageHeader
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="size-2 rounded-full bg-success" />
+            Live progress
+          </span>
+        }
+        title={campaignName || "Progress"}
+        back={isSolo ? { to: `/k/${slug}/tracker`, label: "Back to tracker" } : undefined}
+      >
+        <CampaignTabs slug={slug} hideOverview={hideOverview} isSolo={isSolo} />
+      </PageHeader>
 
-          <div className="inline-flex items-center gap-3 bg-white/12 border border-white/20 rounded-full px-5 py-1.5 text-sm font-medium">
-            <span>{khatams.find(k => k.id === selectedKhatamId)?.name ?? `Khatam #${khatamNum}`}</span>
-            <div className="w-px h-3.5 bg-white/30" />
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="font-mono text-xs text-white/70">
-                {currentTime.toLocaleTimeString()}
-              </span>
+      <div className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+        {goalTiles.length > 0 && (
+          <section aria-labelledby="campaign-goals">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3">
+              <h2 id="campaign-goals" className="text-base font-semibold text-stone-900">Campaign goals</h2>
+              {khatams.length > 1 && <p className="text-sm text-stone-500">Across all {khatams.length} khatams</p>}
             </div>
-          </div>
-
-          <div className="mt-3">
-            <Link
-              to={`/k/${slug}/tracker`}
-              className="text-white/60 text-sm no-underline hover:text-white/80 transition-colors"
-            >
-              &larr; Back to Tracker
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Stats Bar */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-[1200px] mx-auto px-5 py-4">
-
-          {/* Khatam switcher */}
-          {khatams.length > 1 && (
-            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none">
-              <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium shrink-0 mr-1">Khatam</span>
-              {khatams.map(k => {
-                const isSelected = k.id === selectedKhatamId;
-                return (
-                  <button
-                    key={k.id}
-                    onClick={() => setSelectedKhatamId(k.id)}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150"
-                    style={isSelected
-                      ? { background: "#8B0000", color: "#fff", boxShadow: "0 1px 4px rgba(139,0,0,0.25)" }
-                      : { background: "#F5F5F5", color: "#777" }
-                    }
-                  >
-                    {k.name ?? `#${k.khatam_num}`}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            {[
-              { label: "Completed", val: done, color: "#2E7D32", bg: "#E8F5E9" },
-              { label: "In Progress", val: prog, color: "#F57F17", bg: "#FFF8E1" },
-              { label: "Remaining", val: rem, color: "#8B0000", bg: "#FFF5F5" },
-            ].map(s => (
-              <div key={s.label} className="rounded-xl p-3.5 text-center"
-                style={{ background: s.bg, border: `1px solid ${s.color}20` }}>
-                <div className="text-3xl font-bold leading-none" style={{ color: s.color, fontFamily: "'Playfair Display', serif" }}>
-                  {s.val}
-                </div>
-                <div className="text-[11px] text-gray-500 mt-1 uppercase tracking-wider font-medium">{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-700 ease-out"
-              style={{ width: `${pct}%`, background: "linear-gradient(90deg, #8B0000, #B71C1C)" }} />
-          </div>
-          <div className="text-xs text-gray-400 text-right pt-1.5 font-medium">{pct}% complete</div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-[1200px] mx-auto px-5 py-8">
-        {campaignGoals.some(goal => goal.goal_type === "surah_recitation" && goal.is_enabled) && (
-          <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="flex items-end justify-between gap-3"><div><p className="text-[11px] font-medium uppercase tracking-[3px] text-gray-400">Surah goals</p><h2 className="mt-1 text-xl font-semibold text-gray-900">Campaign-wide recitations</h2></div><Link to={`/k/${slug}`} className="text-xs font-semibold text-[#8B0000] hover:underline">Campaign overview</Link></div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {campaignGoals.filter(goal => goal.goal_type === "surah_recitation" && goal.is_enabled).map(goal => {
-                const goalPct = Math.min(100, Math.round(goal.completed / goal.target * 100));
-                return <Link key={goal.id} to={`/k/${slug}/goals/${goal.id}`} className="rounded-xl border border-gray-200 p-4 transition-colors hover:border-[#8B0000]/30 hover:bg-[#FFF9F7]"><p className="text-sm font-semibold text-gray-900">Surah {getSurahName(goal.surah_number)}</p><p className="mt-1 text-xs text-gray-400">{goal.completed.toLocaleString()} of {goal.target.toLocaleString()} complete</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#8B0000]" style={{ width: `${goalPct}%` }} /></div><p className="mt-2 text-right text-[10px] font-medium text-gray-400">{goalPct}%</p></Link>;
-              })}
-            </div>
+            <CampaignGoals goals={goalTiles} />
           </section>
         )}
-        <div className="grid grid-cols-12 gap-5">
 
-          {/* Circular Progress Card */}
-          <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl p-8 border border-gray-100 shadow-sm flex flex-col items-center justify-center">
-            <p className="text-[11px] text-gray-400 uppercase tracking-[3px] mb-6 font-medium">Overall Progress</p>
-            <div className="relative">
-              <CircularProgress value={pct} size={200} stroke={12} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-6xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "#8B0000" }}>
-                  {pct}
+        <section aria-labelledby="khatam-progress" className="space-y-4">
+          <div className={cn(ui.card, "p-4 sm:p-6")}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              {khatams.length > 1 ? (
+                <div className="w-full sm:max-w-sm">
+                  <label htmlFor="khatam-picker" className={ui.label}>
+                    <span id="khatam-progress">Khatam</span>
+                  </label>
+                  <select
+                    id="khatam-picker"
+                    className={ui.input}
+                    value={selectedKhatamId ?? ""}
+                    onChange={e => selectKhatam(Number(e.target.value))}
+                  >
+                    {khatamGroups.length === 1
+                      ? khatamGroups[0].items.map(o => <option key={o.id} value={o.id}>{o.text}</option>)
+                      : khatamGroups.map(g => (
+                          <optgroup key={g.label} label={`${g.label} (${g.items.length})`}>
+                            {g.items.map(o => <option key={o.id} value={o.id}>{o.text}</option>)}
+                          </optgroup>
+                        ))}
+                  </select>
+                </div>
+              ) : (
+                <h2
+                  id="khatam-progress"
+                  className={cn("text-base font-semibold text-stone-900", selected?.name === campaignName && "sr-only")}
+                >
+                  {selected?.name ?? "Khatam"}
+                </h2>
+              )}
+              {selected && slotsReady && status !== "In progress" && (
+                <span
+                  className={cn(
+                    "inline-flex h-7 w-fit shrink-0 items-center rounded-full px-2.5 text-xs font-medium sm:mb-1.5",
+                    done === 120 ? "bg-success-light text-success" : "bg-stone-100 text-stone-600",
+                  )}
+                >
+                  {status}
                 </span>
-                <span className="text-xs text-gray-400 mt-4 uppercase tracking-wider">percent</span>
-              </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-5xl font-semibold tabular-nums leading-none tracking-tight text-stone-900 sm:text-6xl">
+                {slotsReady ? `${pct}%` : "–"}
+              </span>
+              <span className="text-[15px] text-stone-600">
+                <span className="font-semibold tabular-nums text-stone-900">{done}</span> of 120 quarters done
+              </span>
+            </div>
+            <div className="mt-4">
+              <QuarterProgress done={done} inProgress={inProgress} />
             </div>
           </div>
 
-          {/* Juz Completion Heatmap */}
-          <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <p className="text-[11px] text-gray-400 uppercase tracking-[3px] mb-5 font-medium">Juz Completion Map</p>
-            <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-              {juzData.map(j => (
-                <div key={j.juz} className="group relative flex flex-col items-center gap-1">
-                  <div className="w-full aspect-square rounded-xl overflow-hidden transition-all duration-200 hover:scale-110 hover:shadow-lg cursor-default"
-                    style={{ border: "1.5px solid #D8D8D8" }}>
-                    <div className="grid grid-cols-2 w-full h-full gap-px bg-white">
-                      {j.quarters.map((status, qi) => (
-                        <div
-                          key={qi}
-                          className="transition-colors duration-500"
-                          style={{ background: quarterColor(status) }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold leading-none text-gray-400 tabular-nums">
-                    {j.juz}
-                  </span>
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-3 py-1.5 bg-text-heading text-white rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
-                    <span className="font-semibold">Juz {j.juz}</span>
-                    <span className="text-white/60 ml-1" style={{ fontFamily: "'Amiri', serif" }}>{j.name}</span>
-                    <span className="text-white/80 ml-2">{j.done}/4</span>
-                    {j.prog > 0 && <span className="text-amber-300 ml-1">({j.prog} active)</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-5 mt-5 pt-4 border-t border-gray-100">
-              {[
-                { quarters: ["av", "av", "av", "av"], label: "None" },
-                { quarters: ["cl", "av", "av", "av"], label: "In progress" },
-                { quarters: ["dn", "av", "av", "av"], label: "1 done" },
-                { quarters: ["dn", "dn", "dn", "dn"], label: "Complete" },
-              ].map(l => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-md overflow-hidden shrink-0"
-                    style={{ border: "1.5px solid #D8D8D8" }}>
-                    <div className="grid grid-cols-2 w-full h-full gap-px bg-white">
-                      {l.quarters.map((s, i) => (
-                        <div key={i} style={{ background: quarterColor(s) }} />
-                      ))}
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400 font-medium">{l.label}</span>
-                </div>
-              ))}
-            </div>
+          <div className={cn(ui.card, "p-4 sm:p-6")}>
+            <h3 className="text-base font-semibold text-stone-900">Juz map</h3>
+            <p className="mb-4 mt-0.5 text-sm text-stone-500">Each block is one Juz. Its four bars are the quarters, in order.</p>
+            <JuzMap slots={slots} />
           </div>
 
-          {/* Leaderboard */}
-          <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <p className="text-[11px] text-gray-400 uppercase tracking-[3px] mb-5 font-medium">Top Participants</p>
-            {leaderboard.length === 0 ? (
-              <p className="text-sm text-gray-300 italic py-6 text-center">No participants yet</p>
-            ) : (
-              <div className="space-y-1">
-                {leaderboard.slice(0, 8).map((p, i) => (
-                  <div key={p.name} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? "bg-amber-100 text-amber-700" :
-                      i === 1 ? "bg-gray-100 text-gray-500" :
-                        i === 2 ? "bg-orange-100 text-orange-600" :
-                          "bg-gray-50 text-gray-400"
-                      }`}>
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-text-heading truncate block">{p.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm font-semibold text-success">{p.completed}</span>
-                        <span className="text-[10px] text-gray-300">done</span>
-                      </div>
-                      {p.inProgress > 0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm font-medium text-warning">{p.inProgress}</span>
-                          <span className="text-[10px] text-gray-300">active</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+          <div className={cn("grid gap-4", !isSolo && "lg:grid-cols-2")}>
+            {!isSolo && (
+              <div className={cn(ui.card, "p-4 sm:p-6")}>
+                <h3 className="mb-1 text-base font-semibold text-stone-900">Top readers</h3>
+                <TopReaders slots={slots} />
               </div>
             )}
-          </div>
-
-          {/* Recent Activity */}
-          <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <p className="text-[11px] text-gray-400 uppercase tracking-[3px] mb-5 font-medium">Recent Activity</p>
-            {recentActivity.length === 0 ? (
-              <p className="text-sm text-gray-300 italic py-6 text-center">No activity yet</p>
-            ) : (
-              <div className="space-y-1">
-                {recentActivity.map((s, i) => {
-                  const isComplete = s.status === "dn";
-                  const time = s.done_at || s.at;
-                  const mins = time ? Math.floor((Date.now() - new Date(time).getTime()) / 60000) : 0;
-                  const timeStr = mins < 1 ? "just now" : mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
-
-                  return (
-                    <div key={`${s.juz}-${s.q}-${i}`}
-                      className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors">
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${isComplete ? "bg-success" : "bg-warning"}`} />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm text-gray-600">
-                          <span className="font-medium text-text-heading">{s.by}</span>
-                          {" "}{isComplete ? "completed" : "claimed"}{" "}
-                          <span className="text-gray-400">Juz {s.juz} Q{s.q}</span>
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-gray-300 font-mono shrink-0">{timeStr}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Quarter-by-Quarter Strip */}
-          <div className="col-span-12 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] text-gray-400 uppercase tracking-[3px] font-medium">Quarter-by-Quarter Progress</p>
-              <p className="text-sm text-gray-400 font-medium">{done} / 120</p>
-            </div>
-            <div className="flex gap-[2px]">
-              {slots.map((s, i) => (
-                <div
-                  key={i}
-                  className="h-5 flex-1 first:rounded-l-md last:rounded-r-md transition-colors"
-                  style={{
-                    background: s.status === "dn" ? "#2E7D32" : s.status === "cl" ? "#F9A825" : "#F0F0F0",
-                    minWidth: 1,
-                  }}
-                  title={`Juz ${s.juz} Q${s.q}: ${COLORS[s.status as StatusKey].label}${s.by ? ` (${s.by})` : ""}`}
-                />
-              ))}
+            <div className={cn(ui.card, "p-4 sm:p-6")}>
+              <h3 className="mb-1 text-base font-semibold text-stone-900">Recent activity</h3>
+              <RecentActivity slots={slots} />
             </div>
           </div>
-
-        </div>
+        </section>
       </div>
     </>
   );

@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { MapPin } from "lucide-react";
 import { Globe, type DynamicMarker } from "@/components/ui/globe";
+import PageHeader from "@/components/layout/PageHeader";
 import { api } from "@/lib/api";
-import { supabasePublic } from "@/lib/supabase";
 import { timeAgo } from "@/lib/helpers";
+import { supabasePublic } from "@/lib/supabase";
 import { Q_SHORT } from "@/lib/constants";
+import { ui, btn } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import type { GlobeData, GlobeCompletion } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
-// Demo data — realistic spread of Muslim communities worldwide
+// Sample data for the ?demo preview — a realistic spread of communities
 // ---------------------------------------------------------------------------
 
 interface DemoSpot {
@@ -52,7 +56,9 @@ const DEMO_SPOTS: DemoSpot[] = [
 ];
 
 const DEMO_INTERVAL_MS = 900;     // how fast new markers appear
-const DEMO_RECENT_TTL_MS = 4200;  // how long radiating pulse lasts before settling
+const DEMO_RECENT_TTL_MS = 4200;  // how long the radiating pulse lasts before settling
+const MOBILE_FEED_LIMIT = 6;
+const GROUP_WINDOW_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -90,10 +96,51 @@ function makeDemoCompletions(visibleCount: number): GlobeCompletion[] {
       q: spot.q,
       khatam_name: "Ramadan 2026 Khatam",
       location: spot.location,
-      completed_at: new Date(now - i * DEMO_INTERVAL_MS).toISOString(),
+      completed_at: new Date(now - (visibleCount - 1 - i) * DEMO_INTERVAL_MS).toISOString(),
       name: spot.name,
     }))
     .reverse(); // newest first
+}
+
+interface FeedGroup {
+  key: string;
+  name: string | null;
+  location: string;
+  juz: number;
+  quarters: number[];
+  completedAt: string;
+}
+
+/** One reader finishing several quarters of the same Juz in one sitting becomes one line. */
+function groupFeed(items: GlobeCompletion[]): FeedGroup[] {
+  const groups: FeedGroup[] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.name === item.name &&
+      last.location === item.location &&
+      last.juz === item.juz &&
+      Math.abs(new Date(last.completedAt).getTime() - new Date(item.completed_at).getTime()) < GROUP_WINDOW_MS
+    ) {
+      last.quarters.push(item.q);
+      continue;
+    }
+    groups.push({
+      key: `${item.location}-${item.juz}-${item.q}-${item.completed_at}`,
+      name: item.name,
+      location: item.location,
+      juz: item.juz,
+      quarters: [item.q],
+      completedAt: item.completed_at,
+    });
+  }
+  return groups;
+}
+
+function describeQuarters(juz: number, quarters: number[]) {
+  if (quarters.length === 4) return `all of Juz ${juz}`;
+  return `Juz ${juz} · ${[...quarters].sort((a, b) => a - b).map(q => Q_SHORT[q - 1]).join(", ")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +153,9 @@ export default function GlobePage() {
 
   const [data, setData] = useState<GlobeData | null>(null);
   const [loading, setLoading] = useState(true);
-  const feedRef = useRef<HTMLDivElement>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [, setTick] = useState(0); // re-render so relative times stay fresh
+  const feedRef = useRef<HTMLOListElement>(null);
 
   // Demo state
   const [demoVisible, setDemoVisible] = useState(0);
@@ -115,20 +164,20 @@ export default function GlobePage() {
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoRecentTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // ---- Live data fetching ----
+  // ---- Live data ----
   const fetchData = useCallback(async () => {
     try {
       const result = await api.getGlobeData();
       setData(result);
     } catch {
-      // silent fail
+      // Keep whatever we had; the empty state covers a first-load failure.
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!isDemo) fetchData();
+    if (!isDemo) void fetchData();
     else setLoading(false);
   }, [isDemo, fetchData]);
 
@@ -136,17 +185,21 @@ export default function GlobePage() {
     if (isDemo) return;
     const channel = supabasePublic
       .channel("globe-realtime")
-      .on("postgres_changes", { event: "UPDATE", schema: "khatam_public", table: "slots" }, () => fetchData())
+      .on("postgres_changes", { event: "UPDATE", schema: "khatam_public", table: "slots" }, () => void fetchData())
       .subscribe();
-    return () => { supabasePublic.removeChannel(channel); };
+    return () => { void supabasePublic.removeChannel(channel); };
   }, [isDemo, fetchData]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ---- Demo animation ----
   const startDemo = useCallback(() => {
     setDemoVisible(0);
     setDemoRecent(new Set());
     setDemoSpawnTimes(new Map());
-    // clear any pending timers
     demoRecentTimers.current.forEach(clearTimeout);
     demoRecentTimers.current = [];
 
@@ -175,7 +228,7 @@ export default function GlobePage() {
       idx = (idx + 1) % DEMO_SPOTS.length;
     };
 
-    tick(); // first one immediately
+    tick();
     demoTimerRef.current = setInterval(tick, DEMO_INTERVAL_MS);
   }, []);
 
@@ -197,22 +250,25 @@ export default function GlobePage() {
     return stopDemo;
   }, [isDemo, startDemo, stopDemo]);
 
-  // Scroll feed to top on new demo item
+  // Keep the newest demo item in view
   useEffect(() => {
     if (isDemo && feedRef.current) feedRef.current.scrollTop = 0;
   }, [isDemo, demoVisible]);
 
   // ---- Derived display data ----
-  const liveMarkers = data ? buildDynamicMarkers(data) : undefined;
-  const demoMarkers = buildDemoMarkers(demoVisible, demoRecent, demoSpawnTimes);
-  const dynamicMarkers = isDemo ? demoMarkers : liveMarkers;
+  const liveMarkers = useMemo(() => (data ? buildDynamicMarkers(data) : undefined), [data]);
+  const demoMarkers = useMemo(
+    () => buildDemoMarkers(demoVisible, demoRecent, demoSpawnTimes),
+    [demoVisible, demoRecent, demoSpawnTimes],
+  );
 
-  const liveRecent = data?.recent ?? [];
-  const demoFeed = makeDemoCompletions(demoVisible);
-  const feed = isDemo ? demoFeed : liveRecent;
+  const feed = useMemo(
+    () => groupFeed(isDemo ? makeDemoCompletions(demoVisible) : data?.recent ?? []),
+    [isDemo, demoVisible, data],
+  );
 
-  const liveEmpty = !loading && (!data || data.total_completions === 0);
-  const isEmpty = !isDemo && liveEmpty;
+  const isEmpty = !isDemo && !loading && (!data || data.total_completions === 0);
+  const dynamicMarkers = isDemo ? demoMarkers : isEmpty ? undefined : liveMarkers;
 
   const totalCompletions = isDemo ? demoVisible : (data?.total_completions ?? 0);
   const totalLocations = isDemo
@@ -226,231 +282,109 @@ export default function GlobePage() {
     setSearchParams(next, { replace: true });
   };
 
+  const stats = [
+    { label: "Quarters completed", value: totalCompletions },
+    { label: totalLocations === 1 ? "Location" : "Locations", value: totalLocations },
+  ];
+
   return (
-    <div
-      style={{ background: "linear-gradient(160deg, #1a0000 0%, #3A0000 40%, #5A0000 100%)" }}
-      className="min-h-screen text-white"
-    >
-      {/* Header */}
-      <div className="max-w-[1200px] mx-auto px-5 pt-10 pb-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <p className="text-xs uppercase tracking-[4px] text-white/40">
-                {isDemo ? "Preview" : "Live"}
-              </p>
-              {isDemo && (
-                <span className="text-[10px] font-bold tracking-widest uppercase bg-yellow-400/20 border border-yellow-400/40 text-yellow-300 px-2 py-0.5 rounded-full">
-                  Demo
-                </span>
-              )}
+    <>
+      <PageHeader
+        title="World map"
+        description="Where people are finishing Quran quarters. Khatams appear here once their organiser adds a location."
+        actions={
+          <button type="button" onClick={toggleDemo} className={btn("secondary", "sm")}>
+            {isDemo ? "Back to live data" : "Preview with sample data"}
+          </button>
+        }
+      >
+        <dl className="mt-5 flex flex-wrap items-end gap-x-8 gap-y-3">
+          {stats.map(s => (
+            <div key={s.label}>
+              <dt className="text-sm text-stone-500">{s.label}</dt>
+              <dd className="text-2xl font-semibold tabular-nums text-stone-900">
+                {loading && !isDemo ? "–" : s.value.toLocaleString()}
+              </dd>
             </div>
-            <h1
-              className="text-3xl md:text-5xl font-normal tracking-wide text-white"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
-              Quran Around the World
-            </h1>
-            <p className="text-white/50 mt-2 text-sm md:text-base">
-              Every glowing dot is a community reading the Quran right now.
+          ))}
+          {isDemo && (
+            <p className="mb-1 rounded-full bg-warning-light px-2.5 py-1 text-xs font-medium text-[#8a5a00]">
+              Showing sample data
             </p>
-          </div>
+          )}
+        </dl>
+      </PageHeader>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggleDemo}
-              className={`text-xs font-medium px-4 py-2 rounded-full border transition-all duration-200 ${isDemo
-                  ? "bg-yellow-400/15 border-yellow-400/40 text-yellow-300 hover:bg-yellow-400/25"
-                  : "bg-white/8 border-white/20 text-white/60 hover:text-white/90 hover:bg-white/15"
-                }`}
-            >
-              {isDemo ? "⏹ Exit Demo" : "▶ Preview Demo"}
-            </button>
-            <Link
-              to="/"
-              className="text-sm text-white/40 hover:text-white/70 transition-colors"
-            >
-              ← Home
-            </Link>
-          </div>
-        </div>
-
-        {/* Stats */}
-        {(isDemo || (!loading && data && data.total_completions > 0)) && (
-          <div className="mt-6 flex items-center gap-6 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${isDemo ? "bg-yellow-400" : "bg-yellow-400 animate-pulse"}`}
-                style={isDemo ? { animation: "pulse 1s ease-in-out infinite" } : undefined}
-              />
-              <span className="text-white/70 text-sm">
-                <span className="text-white font-semibold text-base tabular-nums">
-                  {totalCompletions.toLocaleString()}
-                </span>
-                {" "}sections completed
-              </span>
-            </div>
-            <div className="text-white/30">·</div>
-            <div className="text-white/70 text-sm">
-              <span className="text-white font-semibold text-base tabular-nums">{totalLocations}</span>
-              {" "}{totalLocations === 1 ? "location" : "locations"} worldwide
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main content: Globe + Feed */}
-      <div className="max-w-[1200px] mx-auto px-5 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
-
-          {/* Globe */}
-          <div className="relative" style={{ height: "min(70vw, 600px)" }}>
-            <Globe
-              className="relative w-full h-full"
-              dynamicMarkers={isDemo ? dynamicMarkers : (isEmpty ? undefined : dynamicMarkers)}
-              autoRotate={true}
-            />
-
-            {/* Empty state overlay */}
+      <div className="mx-auto grid max-w-6xl items-start gap-4 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-6">
+        {/* Globe */}
+        <div className={cn(ui.card, "overflow-hidden p-4 sm:p-6")}>
+          <div className="relative mx-auto -my-3 aspect-square w-full max-w-[300px] sm:-my-6 sm:max-w-[440px] lg:max-w-[540px]">
+            <Globe className="relative" dynamicMarkers={dynamicMarkers} autoRotate />
             {isEmpty && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="bg-black/40 backdrop-blur-sm rounded-2xl px-6 py-5 text-center max-w-[300px] mx-auto">
-                  <p className="text-white/80 text-sm mb-1">No locations yet</p>
-                  <p className="text-white/40 text-xs leading-relaxed mb-3">
-                    Add a location when creating your khatam to appear on this globe.
-                  </p>
-                  <button
-                    onClick={toggleDemo}
-                    className="text-xs text-yellow-300/80 hover:text-yellow-300 border border-yellow-400/30 px-3 py-1.5 rounded-full transition-colors"
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+                <p className="pointer-events-auto max-w-[260px] rounded-lg border border-stone-200 bg-white/95 px-4 py-3 text-center text-sm text-stone-600">
+                  No khatams with a location have completed a quarter yet.
+                </p>
+              </div>
+            )}
+          </div>
+          <p className="mt-3 text-center text-xs text-stone-500">Bigger dots mean more completed quarters; new ones pulse. Drag to turn the globe.</p>
+        </div>
+
+        {/* Recent completions */}
+        <section aria-labelledby="recent-completions" className={cn(ui.card, "p-4 sm:p-6")}>
+          <h2 id="recent-completions" className="text-base font-semibold text-stone-900">Recent completions</h2>
+
+          {loading && !isDemo ? (
+            <div className="mt-3 space-y-3" aria-hidden>
+              {Array.from({ length: 5 }, (_, i) => (
+                <div key={i} className="h-10 rounded-md bg-stone-100" />
+              ))}
+            </div>
+          ) : feed.length === 0 ? (
+            <p className="mt-2 text-sm text-stone-500">Completions will appear here as they happen.</p>
+          ) : (
+            <>
+              <ol ref={feedRef} className="mt-1 divide-y divide-stone-100 lg:max-h-[520px] lg:overflow-y-auto">
+                {feed.map((item, i) => (
+                  <li
+                    key={item.key}
+                    className={cn("flex items-start gap-3 py-3", !showAll && i >= MOBILE_FEED_LIMIT && "hidden lg:flex")}
                   >
-                    ▶ Preview Demo
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Demo start overlay */}
-            {isDemo && demoVisible === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/30 backdrop-blur-sm rounded-full w-16 h-16 flex items-center justify-center">
-                  <div className="w-6 h-6 border-2 border-yellow-300 border-t-transparent rounded-full animate-spin" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Feed */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-white/50 uppercase tracking-[3px]">
-                Recent Completions
-              </h2>
-              {isDemo && (
-                <span className="text-xs text-yellow-400/60 tabular-nums">
-                  {demoVisible} / {DEMO_SPOTS.length}
-                </span>
-              )}
-            </div>
-
-            {/* Skeleton (live loading) */}
-            {loading && !isDemo && (
-              <div className="space-y-3">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />
-                ))}
-              </div>
-            )}
-
-            {/* Feed items */}
-            {(isDemo ? demoVisible > 0 : feed.length > 0) && (
-              <div
-                ref={feedRef}
-                className="space-y-2 overflow-y-auto"
-                style={{ maxHeight: "min(70vw, 600px)" }}
-              >
-                {feed.map((item, i) => {
-                  const isNewItem = isDemo && i === 0;
-                  return (
-                    <div
-                      key={isDemo ? `${item.location}-${item.juz}-${item.q}` : i}
-                      className="bg-white/5 border border-white/8 rounded-xl px-4 py-3"
-                      style={{
-                        animation: isNewItem
-                          ? "feedSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both"
-                          : `fadeIn 0.3s ease ${Math.min(i, 8) * 0.04}s both`,
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white/90 text-sm font-medium truncate">
-                            {item.name ? (
-                              <>{item.name} <span className="text-white/40 font-normal">completed</span></>
-                            ) : (
-                              <span className="text-white/50 italic">Someone</span>
-                            )}
-                            {" "}
-                            <span className="text-yellow-300/80">Juz {item.juz} {Q_SHORT[item.q - 1]}</span>
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-white/30 text-xs">📍</span>
-                            <span className="text-white/50 text-xs truncate">{item.location}</span>
-                          </div>
-                        </div>
-                        <span className="text-white/30 text-xs shrink-0 mt-0.5">
-                          {isDemo && i === 0 ? "just now" : timeAgo(item.completed_at)}
-                        </span>
-                      </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-stone-600">
+                        <span className="font-medium text-stone-900">{item.name || "Someone"}</span> completed{" "}
+                        <span className="whitespace-nowrap">{describeQuarters(item.juz, item.quarters)}</span>
+                      </p>
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-stone-500">
+                        <MapPin size={12} className="shrink-0" aria-hidden />
+                        <span className="truncate">{item.location}</span>
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {!loading && !isDemo && feed.length === 0 && !liveEmpty && (
-              <div className="text-white/30 text-sm text-center py-8">
-                Completions will appear here in real time.
-              </div>
-            )}
-
-            {/* CTA */}
-            <div className="mt-4 pt-4 border-t border-white/10">
-              {isDemo ? (
-                <p className="text-yellow-300/50 text-xs mb-3">
-                  This is a preview. Real completions will appear when your community reads.
-                </p>
-              ) : (
-                <p className="text-white/40 text-xs mb-3">
-                  Start your own khatam and add your location to appear on this globe.
-                </p>
+                    <time dateTime={item.completedAt} className="shrink-0 pt-px text-xs tabular-nums text-stone-500">
+                      {timeAgo(item.completedAt)}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+              {!showAll && feed.length > MOBILE_FEED_LIMIT && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className={cn(btn("ghost", "sm"), "-ml-3 mt-1 lg:hidden")}
+                >
+                  Show {feed.length - MOBILE_FEED_LIMIT} more
+                </button>
               )}
-              <Link
-                to="/"
-                className="inline-block bg-[#8B0000] hover:bg-[#6B0000] text-white text-sm font-medium px-5 py-2.5 rounded-full transition-colors"
-              >
-                Create a Khatam
-              </Link>
-            </div>
+            </>
+          )}
+
+          <div className="mt-4 border-t border-stone-100 pt-4">
+            <p className="text-sm text-stone-600">Want your community on the map? Add a location when you start a khatam.</p>
+            <Link to="/new" className={cn(btn("primary", "sm"), "mt-3")}>Start a khatam</Link>
           </div>
-
-        </div>
+        </section>
       </div>
-
-      {/* Branding watermark for demo screenshots */}
-      {isDemo && (
-        <div className="fixed bottom-5 right-5 text-white/20 text-xs tracking-widest uppercase pointer-events-none">
-          qurankhatam.com
-        </div>
-      )}
-
-      <style>{`
-        @keyframes feedSlideIn {
-          from { opacity: 0; transform: translateY(-12px) scale(0.97); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.4; }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }

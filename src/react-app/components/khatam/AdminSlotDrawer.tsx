@@ -1,17 +1,23 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription,
 } from "@/components/ui/drawer";
-import { Circle, Clock, CheckCircle2, UserCheck, RotateCcw, X, UserPlus } from "lucide-react";
 import type { Slot, StatusKey } from "@/lib/types";
 import type { ParticipantInfo } from "@/lib/api";
 import { COLORS, Q_LABELS, JUZ_NAMES } from "@/lib/constants";
 import { timeAgo } from "@/lib/helpers";
+import { btn, ui } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 interface AdminSlotDrawerProps {
   open: boolean;
   onClose: () => void;
-  /** juz > 0, q > 0 = single slot; q === 0 = entire Juz */
+  /**
+   * juz > 0, q > 0 → one quarter
+   * juz > 0, q === 0 → all four quarters of that Juz
+   * juz === 0 → the whole Khatam (all 120 quarters)
+   */
   juz: number;
   q: number;
   slots: Slot[];
@@ -19,231 +25,246 @@ interface AdminSlotDrawerProps {
   onAssign: (juz: number, q: number, status: StatusKey, name?: string) => Promise<void>;
   onAssignJuz: (juz: number, status: StatusKey, name?: string) => Promise<void>;
   onResetJuz: (juz: number) => Promise<void>;
+  /** Switch the drawer from one quarter to its whole Juz. */
+  onOpenJuz?: (juz: number) => void;
+  /** Whole-Khatam actions (juz === 0). */
+  onResetAll?: () => Promise<void>;
+  onAssignAll?: (name: string) => Promise<void>;
+  onCompleteAll?: () => Promise<void>;
 }
 
-const STATUS_OPTIONS: { key: StatusKey; label: string; Icon: React.ElementType; color: string; bg: string }[] = [
-  { key: "av",  label: "Available",    Icon: Circle,       color: "#8B0000", bg: "#FFF5F5"  },
-  { key: "cl",  label: "In Progress",  Icon: Clock,        color: "#F57F17", bg: "#FFF8E1"  },
-  { key: "dn",  label: "Completed",    Icon: CheckCircle2, color: "#2E7D32", bg: "#E8F5E9"  },
-];
+const STATUS_ORDER: StatusKey[] = ["av", "cl", "dn"];
+const STATUS_LABEL: Record<StatusKey, string> = { av: "Available", cl: "Claimed", dn: "Done" };
 
 export default function AdminSlotDrawer({
   open, onClose,
   juz, q,
   slots, participants,
-  onAssign, onAssignJuz, onResetJuz,
+  onAssign, onAssignJuz, onResetJuz, onOpenJuz,
+  onResetAll, onAssignAll, onCompleteAll,
 }: AdminSlotDrawerProps) {
-  const isJuzMode = q === 0;
-  const slot = !isJuzMode ? slots.find(s => s.juz === juz && s.q === q) ?? null : null;
-  const juzSlots = slots.filter(s => s.juz === juz);
+  const mode: "khatam" | "juz" | "slot" = juz === 0 ? "khatam" : q === 0 ? "juz" : "slot";
+  const slot = mode === "slot" ? slots.find(s => s.juz === juz && s.q === q) ?? null : null;
+  const juzSlots = mode === "juz" ? slots.filter(s => s.juz === juz) : [];
+  const allAvailable = slots.length > 0 && slots.every(s => s.status === "av");
 
-  const defaultStatus: StatusKey = isJuzMode
-    ? "cl"
-    : (slot?.status === "av" ? "cl" : (slot?.status ?? "cl"));
-
-  const [selectedStatus, setSelectedStatus] = useState<StatusKey>(defaultStatus);
-  const [nameInput, setNameInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<StatusKey>("cl");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setSelectedStatus(
-        isJuzMode ? "cl"
-          : (slot?.status === "av" ? "cl" : (slot?.status ?? "cl"))
-      );
-      setNameInput(slot?.by ?? "");
-      setLoading(false);
+    if (!open) return;
+    if (mode === "slot" && slot) {
+      setStatus(slot.status === "av" ? "cl" : slot.status);
+      setName(slot.by ?? "");
+    } else if (mode === "juz") {
+      const owners = [...new Set(juzSlots.map(s => s.by).filter(Boolean))];
+      setStatus("cl");
+      setName(owners.length === 1 ? owners[0]! : "");
+    } else {
+      setStatus(allAvailable ? "cl" : "dn");
+      setName("");
     }
+    setSaving(false);
   }, [open, juz, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAssign = async () => {
-    setLoading(true);
-    if (isJuzMode) {
-      await onAssignJuz(juz, selectedStatus, nameInput.trim() || undefined);
-    } else {
-      await onAssign(juz, q, selectedStatus, nameInput.trim() || undefined);
+  // Whole-Khatam "Done" keeps existing names, so no name field there.
+  const showName = status !== "av" && !(mode === "khatam" && status === "dn");
+  const trimmed = name.trim();
+  const khatamAssignBlocked = mode === "khatam" && status === "cl" && !allAvailable;
+  const nameRequired = mode === "khatam" && status === "cl";
+  const canSave = !saving && !khatamAssignBlocked && (!nameRequired || !!trimmed);
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      if (mode === "slot") {
+        await onAssign(juz, q, status, trimmed || undefined);
+      } else if (mode === "juz") {
+        if (status === "av") await onResetJuz(juz);
+        else await onAssignJuz(juz, status, trimmed || undefined);
+      } else if (status === "av") {
+        await onResetAll?.();
+      } else if (status === "cl") {
+        await onAssignAll?.(trimmed);
+      } else {
+        await onCompleteAll?.();
+      }
+    } finally {
+      setSaving(false);
     }
-    setLoading(false);
     onClose();
   };
 
-  const handleResetJuz = async () => {
-    setLoading(true);
-    await onResetJuz(juz);
-    setLoading(false);
-    onClose();
-  };
+  const title = mode === "khatam"
+    ? "Whole Khatam"
+    : mode === "juz"
+      ? `Juz ${juz} · all 4 quarters`
+      : `Juz ${juz} · ${Q_LABELS[q - 1].toLowerCase()}`;
 
-  const selectParticipant = (name: string) => {
-    setNameInput(name);
-  };
-
-  const needsName = selectedStatus !== "av";
+  const saveLabel = (() => {
+    if (saving) return "Saving…";
+    if (mode === "khatam") {
+      if (status === "av") return "Reset all 120 quarters";
+      if (status === "dn") return "Mark all 30 Juz done";
+      return trimmed ? `Assign all 30 Juz to ${trimmed}` : "Assign all 30 Juz";
+    }
+    if (status === "av") return mode === "juz" ? `Reset Juz ${juz}` : "Mark available";
+    return trimmed ? `Save · ${trimmed}` : "Save";
+  })();
 
   return (
     <Drawer open={open} onOpenChange={o => !o && onClose()}>
-      <DrawerContent className="max-w-lg mx-auto max-h-[90vh] flex flex-col">
-        <DrawerHeader className="pt-5 pb-2 flex-none border-b border-gray-100">
-          <div className="flex items-start justify-between">
-            <div>
-              <DrawerTitle
-                className="text-lg"
-                style={{ fontFamily: "'Playfair Display', serif", color: "#2C2C2C" }}
-              >
-                {isJuzMode ? `Juz ${juz} — Assign Entire Juz` : `Juz ${juz} — ${Q_LABELS[q - 1]}`}
-              </DrawerTitle>
-              <DrawerDescription
-                className="mt-0.5"
-                style={{ fontFamily: "'Amiri', serif", fontSize: 14 }}
-              >
-                {JUZ_NAMES[juz - 1]}
+      <DrawerContent className="mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col">
+        <DrawerHeader className="flex-none border-b border-stone-200 px-4 pb-3 pt-3 text-left group-data-[vaul-drawer-direction=bottom]/drawer-content:text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DrawerTitle className="text-lg font-semibold text-stone-900">{title}</DrawerTitle>
+              <DrawerDescription className={cn("mt-0.5", mode === "khatam" ? "text-sm text-stone-500" : "font-arabic text-base text-stone-500")}>
+                {mode === "khatam" ? "Applies to every quarter in this Khatam" : JUZ_NAMES[juz - 1]}
               </DrawerDescription>
             </div>
             <button
+              type="button"
               onClick={onClose}
-              className="text-gray-300 hover:text-gray-500 transition-colors mt-0.5"
+              aria-label="Close"
+              className="-mr-2 -mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
             >
               <X size={18} />
             </button>
           </div>
         </DrawerHeader>
 
-        <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-5">
-
-          {!isJuzMode && slot && (
-            <div className="flex items-center gap-2">
-              <div
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
-                style={{ background: COLORS[slot.status].accentBg, border: `1px solid ${COLORS[slot.status].border}` }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORS[slot.status].accent }} />
-                <span className="text-xs font-medium" style={{ color: COLORS[slot.status].text }}>
-                  {COLORS[slot.status].label}{slot.by ? ` — ${slot.by}` : ""}
-                </span>
-              </div>
-              {slot.at && (
-                <span className="text-[11px] text-gray-400">
-                  {slot.status === "dn" ? `Done ${timeAgo(slot.done_at)}` : `Claimed ${timeAgo(slot.at)}`}
-                </span>
-              )}
-            </div>
+        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+          {/* Current state */}
+          {mode === "slot" && slot && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-stone-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: COLORS[slot.status].accent }} />
+                <span className="font-medium text-stone-800">Now: {STATUS_LABEL[slot.status]}</span>
+              </span>
+              {slot.by && <span>· {slot.by}</span>}
+              {slot.status === "cl" && slot.at && <span className="text-stone-400">· claimed {timeAgo(slot.at)}</span>}
+              {slot.status === "dn" && slot.done_at && <span className="text-stone-400">· done {timeAgo(slot.done_at)}</span>}
+            </p>
           )}
 
-          {isJuzMode && (
+          {mode === "juz" && (
             <div className="grid grid-cols-4 gap-1.5">
               {juzSlots.map(s => (
                 <div
                   key={s.q}
-                  className="rounded-lg px-2 py-1.5 text-center"
-                  style={{ background: COLORS[s.status].accentBg, border: `1px solid ${COLORS[s.status].border}` }}
+                  className="rounded-md border px-1.5 py-1.5 text-center"
+                  style={{ background: COLORS[s.status].bg, borderColor: COLORS[s.status].border }}
                 >
-                  <div className="text-[10px] font-medium text-gray-400 mb-0.5">Q{s.q}</div>
-                  <div className="text-[11px] font-semibold truncate" style={{ color: COLORS[s.status].text }}>
-                    {s.by ? s.by.split(" ")[0] : COLORS[s.status].label}
+                  <div className="text-[11px] text-stone-500">Q{s.q}</div>
+                  <div className="truncate text-xs font-medium" style={{ color: COLORS[s.status].text }}>
+                    {s.by ? s.by.split(" ")[0] : STATUS_LABEL[s.status]}
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Set status</p>
-            <div className="flex gap-2">
-              {STATUS_OPTIONS.map(({ key, label, Icon, color, bg }) => (
-                <button
-                  key={key}
-                  onClick={() => setSelectedStatus(key)}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-xl border-2 transition-all ${
-                    selectedStatus === key ? "shadow-sm" : "border-gray-100 bg-white opacity-50 hover:opacity-80"
-                  }`}
-                  style={selectedStatus === key ? { borderColor: color, background: bg } : {}}
-                >
-                  <Icon size={16} style={{ color: selectedStatus === key ? color : "#9CA3AF" }} />
-                  <span
-                    className="text-[10px] font-semibold"
-                    style={{ color: selectedStatus === key ? color : "#9CA3AF" }}
+          {/* Status */}
+          <fieldset>
+            <legend className={ui.label}>Status</legend>
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-stone-100 p-1" role="radiogroup">
+              {STATUS_ORDER.map(key => {
+                const active = status === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setStatus(key)}
+                    className={cn(
+                      "flex h-10 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-colors",
+                      active ? "bg-white text-stone-900 shadow-xs" : "text-stone-500 hover:text-stone-800",
+                    )}
                   >
-                    {label}
-                  </span>
-                </button>
-              ))}
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: key === "av" ? COLORS.av.border : COLORS[key].accent }}
+                    />
+                    {STATUS_LABEL[key]}
+                  </button>
+                );
+              })}
             </div>
-          </div>
-
-          {needsName && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Assign to</p>
-              <p className="text-[11px] text-gray-500 mb-2">
-                They must use this exact name when marking complete.
+            {mode === "khatam" && status === "av" && (
+              <p className={ui.hint}>Clears every name and all progress in this Khatam.</p>
+            )}
+            {mode === "khatam" && status === "dn" && (
+              <p className={ui.hint}>Marks every unfinished quarter done. Existing names are kept.</p>
+            )}
+            {khatamAssignBlocked && (
+              <p className="mt-1.5 text-xs text-red-700">
+                Only possible while every quarter is available. Reset the Khatam first.
               </p>
+            )}
+          </fieldset>
 
+          {/* Name */}
+          {showName && (
+            <div>
+              <label htmlFor="admin-assign-name" className={ui.label}>
+                Reader{!nameRequired && <span className="font-normal text-stone-400"> (optional)</span>}
+              </label>
               {participants.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  {participants.map(p => (
-                    <button
-                      key={p.name}
-                      onClick={() => selectParticipant(p.name)}
-                      className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                        nameInput === p.name
-                          ? "bg-[#8B0000] text-white border-[#8B0000]"
-                          : "bg-white text-gray-600 border-gray-200 hover:border-[#8B0000]/40 hover:text-[#8B0000]"
-                      }`}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {participants.map(p => {
+                    const active = trimmed.toLowerCase() === p.name.toLowerCase();
+                    return (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => setName(active ? "" : p.name)}
+                        aria-pressed={active}
+                        className={cn(
+                          "h-9 rounded-full border px-3 text-sm transition-colors",
+                          active
+                            ? "border-primary bg-primary text-white"
+                            : "border-stone-300 bg-white text-stone-700 hover:border-stone-400",
+                        )}
+                      >
+                        {p.name}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-
-              <div className="relative">
-                <UserPlus size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={nameInput}
-                  onChange={e => setNameInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleAssign()}
-                  placeholder={participants.length > 0 ? "Or type a name..." : "Enter name (optional)"}
-                  className="w-full bg-gray-50 border border-gray-200 text-gray-800 pl-9 pr-4 py-2.5 rounded-lg text-[14px] outline-none focus:border-[#8B0000] focus:ring-2 focus:ring-[#8B0000]/10 transition-all"
-                />
-                {nameInput && (
-                  <button
-                    onClick={() => setNameInput("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
+              <input
+                id="admin-assign-name"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") save(); }}
+                placeholder={participants.length > 0 ? "Or type a name" : "Name"}
+                maxLength={60}
+                autoComplete="off"
+                className={ui.input}
+              />
+              <p className={ui.hint}>Readers use this exact name to mark their portion done.</p>
             </div>
           )}
+        </div>
 
-          <div className="space-y-2 pt-1">
-            <button
-              onClick={handleAssign}
-              disabled={loading}
-              className="w-full h-11 rounded-full text-sm font-semibold bg-[#8B0000] hover:bg-[#6B0000] text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <UserCheck size={15} />
-              {loading ? "Saving…" : isJuzMode
-                ? (needsName && nameInput ? `Assign Juz ${juz} to ${nameInput}` : `Set Juz ${juz} to ${STATUS_OPTIONS.find(o => o.key === selectedStatus)?.label}`)
-                : (needsName && nameInput ? `Assign to ${nameInput}` : `Set to ${STATUS_OPTIONS.find(o => o.key === selectedStatus)?.label}`)}
+        <div className="flex-none space-y-2 border-t border-stone-200 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className={cn(btn(status === "dn" ? "success" : "primary", "lg"), "w-full")}
+          >
+            {saveLabel}
+          </button>
+          {mode === "slot" && onOpenJuz && (
+            <button type="button" onClick={() => onOpenJuz(juz)} className={cn(btn("ghost", "md"), "w-full")}>
+              Edit all 4 quarters of Juz {juz}
             </button>
-
-            <button
-              onClick={handleResetJuz}
-              disabled={loading}
-              className="w-full h-10 rounded-full text-xs font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              <RotateCcw size={12} />
-              Reset Juz {juz} to Available
-            </button>
-
-            <button
-              onClick={onClose}
-              className="w-full h-10 rounded-full text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
