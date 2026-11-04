@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useRef } from "react"
 import createGlobe, { type COBEOptions } from "cobe"
 import { useMotionValue, useSpring, type SpringOptions } from "motion/react"
@@ -47,13 +45,13 @@ function ringOffsets(lat: number, lng: number, radiusDeg: number): [number, numb
   return pts
 }
 
-function buildDynamicGlobeMarkers(markers: DynamicMarker[], now: number): NonNullable<COBEOptions["markers"]> {
+function buildDynamicGlobeMarkers(markers: DynamicMarker[], now: number, animate: boolean): NonNullable<COBEOptions["markers"]> {
   const out: NonNullable<COBEOptions["markers"]> = []
   for (const m of markers) {
     const [lat, lng] = m.location
     let baseSize = m.size
 
-    if (m.spawnedAt != null) {
+    if (animate && m.spawnedAt != null) {
       const elapsed = now - m.spawnedAt
       if (elapsed >= 0 && elapsed < SPAWN_POP_MS) {
         const t = elapsed / SPAWN_POP_MS
@@ -62,13 +60,13 @@ function buildDynamicGlobeMarkers(markers: DynamicMarker[], now: number): NonNul
       }
     }
 
-    if (m.isRecent) {
+    if (animate && m.isRecent) {
       baseSize += Math.sin(now / 250) * 0.018
     }
 
     out.push({ location: [lat, lng], size: baseSize })
 
-    if (!m.isRecent) continue
+    if (!m.isRecent || !animate) continue
 
     for (let w = 0; w < RADIATE_WAVES; w++) {
       const phase = ((now / RADIATE_CYCLE_MS + w / RADIATE_WAVES) % 1)
@@ -83,17 +81,23 @@ function buildDynamicGlobeMarkers(markers: DynamicMarker[], now: number): NonNul
   return out
 }
 
+// Light globe for the app's stone-50 pages, with brand-red markers.
 const BASE_GLOBE_CONFIG: Omit<COBEOptions, "markers" | "onRender" | "width" | "height"> = {
   devicePixelRatio: 2,
   phi: 0,
-  theta: 0.3,
-  dark: 1,
-  diffuse: 1.2,
+  theta: 0.25,
+  dark: 0,
+  diffuse: 0.6,
   mapSamples: 16000,
-  mapBrightness: 6,
+  mapBrightness: 1.4,
+  mapBaseBrightness: 0.02,
   baseColor: [1, 1, 1],
-  markerColor: [1, 0.84, 0],
-  glowColor: [1, 1, 1],
+  markerColor: [0.62, 0.04, 0.04],
+  glowColor: [0.96, 0.95, 0.94],
+}
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 }
 
 export interface DynamicMarker {
@@ -113,6 +117,7 @@ export function Globe({
   className?: string
   config?: COBEOptions
   dynamicMarkers?: DynamicMarker[]
+  /** Spins slowly unless the viewer prefers reduced motion. */
   autoRotate?: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -159,6 +164,9 @@ export function Globe({
     window.addEventListener("resize", onResize)
     onResize()
 
+    const animate = !prefersReducedMotion()
+    const spin = autoRotate && animate
+
     const effectiveConfig: COBEOptions = config ?? {
       ...BASE_GLOBE_CONFIG,
       width: 800,
@@ -172,26 +180,28 @@ export function Globe({
       width: widthRef.current * 2,
       height: widthRef.current * 2,
       onRender: (state) => {
-        if (autoRotate && !pointerInteracting.current) phiRef.current += 0.003
+        if (spin && !pointerInteracting.current) phiRef.current += 0.003
         state.phi = phiRef.current + rs.get()
         state.width = widthRef.current * 2
         state.height = widthRef.current * 2
 
         if (markersRef.current !== undefined) {
           const now = Date.now()
-          state.markers = buildDynamicGlobeMarkers(markersRef.current, now)
+          state.markers = buildDynamicGlobeMarkers(markersRef.current, now, animate)
         } else {
           state.markers = STATIC_MARKERS
         }
       },
     })
 
-    setTimeout(() => (canvasRef.current!.style.opacity = "1"), 0)
+    const reveal = setTimeout(() => {
+      if (canvasRef.current) canvasRef.current.style.opacity = "1"
+    }, 0)
     return () => {
+      clearTimeout(reveal)
       globe.destroy()
       window.removeEventListener("resize", onResize)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rs, config, autoRotate])
 
   return (
