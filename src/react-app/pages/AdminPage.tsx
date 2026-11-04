@@ -1,21 +1,50 @@
 import { useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
-import {
-  Shield, Lock, ArrowLeft, LayoutGrid, Settings, CheckCircle2, Clock, Circle, Building2,
-} from "lucide-react";
+import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
+import { Lock } from "lucide-react";
 import { useKhatamState } from "@/hooks/useKhatamState";
-import KhatamSelector from "@/components/khatam/KhatamSelector";
-import JuzRow from "@/components/khatam/JuzRow";
+import PageHeader from "@/components/layout/PageHeader";
+import CampaignTabs from "@/components/layout/CampaignTabs";
+import AdminKhatamPicker from "@/components/khatam/AdminKhatamPicker";
+import AdminSlotGrid from "@/components/khatam/AdminSlotGrid";
 import AdminSlotDrawer from "@/components/khatam/AdminSlotDrawer";
+import AdminKhatamSettings from "@/components/khatam/AdminKhatamSettings";
 import AdminSettingsPanel from "@/components/khatam/AdminSettingsPanel";
+import { COLORS } from "@/lib/constants";
+import { btn, ui } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
-type AdminTab = "slots" | "khatam" | "campaign";
+type AdminTab = "assign" | "khatams" | "settings";
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: "assign", label: "Assign" },
+  { id: "khatams", label: "Khatams" },
+  { id: "settings", label: "Settings" },
+];
+
+function Spinner() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Loading">
+      <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-primary border-t-transparent" />
+    </div>
+  );
+}
 
 export default function AdminPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const [tab, setTab] = useState<AdminTab>("slots");
+  const { slug = "" } = useParams<{ slug: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: AdminTab = tabParam === "khatams" || tabParam === "settings" ? tabParam : "assign";
+  const setTab = (next: AdminTab) => {
+    setSearchParams(prev => {
+      const params = new URLSearchParams(prev);
+      if (next === "assign") params.delete("tab");
+      else params.set("tab", next);
+      return params;
+    }, { replace: true });
+    window.scrollTo({ top: 0 });
+  };
+  const [addOpen, setAddOpen] = useState(false);
 
-  const state = useKhatamState(slug ?? "");
+  const state = useKhatamState(slug);
   const {
     khatamName, campaignName, campaignDescription, campaignSearchable,
     participationMode,
@@ -24,7 +53,7 @@ export default function AdminPage() {
     claimLimit, showNamesOnGlobe, locationCountry,
     adminMode, adminSelected, setAdminSelected,
     adminDrawer, setAdminDrawer,
-    adminPin, setAdminPin, adminErr,
+    adminPin, setAdminPin, adminErr, adminRestoring,
     participants, claimLimitInput, setClaimLimitInput,
     done, prog, rem, pct, khatmComplete, isLatestKhatam,
     selectKhatam,
@@ -33,21 +62,19 @@ export default function AdminPage() {
     adminResetAllToAvailable, adminResetJuzToAvailable, adminDeleteKhatam,
     adminToggleGlobeNames, adminSaveClaimLimit,
     adminUpdateCampaign, adminSaveSurahGoal, adminSetCampaignGoalEnabled,
-    adminCompleteEntireKhatam, adminCreateCampaignKhatams,
+    adminAssignEntireQuran, adminCompleteEntireKhatam, adminCreateCampaignKhatams,
     adminRenameKhatam, adminSetParticipationMode, adminDuplicateKhatam, adminReorderKhatams,
     adminAddParticipant, adminRemoveParticipant, adminSetParticipantLimit,
   } = state;
 
+  const [checking, setChecking] = useState(false);
+
   if (notFound) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Khatam Not Found
-          </h2>
-          <Link to="/" className="text-[#8B0000] text-sm font-medium hover:underline">
-            Go home
-          </Link>
+          <h1 className="mb-2 font-heading text-2xl font-semibold text-stone-900">Campaign not found</h1>
+          <Link to="/" className="text-sm font-medium text-primary hover:underline">Go home</Link>
         </div>
       </div>
     );
@@ -58,255 +85,217 @@ export default function AdminPage() {
   }
 
   if (loading && slots.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-4 border-[#8B0000] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <Spinner />;
   }
 
+  const openAddKhatams = () => {
+    setTab("khatams");
+    setAddOpen(true);
+    window.setTimeout(() => {
+      document.getElementById("admin-add-khatams")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+
+  const closeDrawer = () => {
+    setAdminDrawer(null);
+    setAdminSelected(null);
+  };
+
   return (
-    <div className="min-h-screen bg-[#FAFAF9]">
-      {/* Admin header */}
-      <header
-        className="text-white px-5 py-8 border-b border-white/10"
-        style={{ background: "linear-gradient(135deg, #3A0000 0%, #5A0000 50%, #8B0000 100%)" }}
+    <div className="min-h-screen bg-background">
+      <PageHeader
+        eyebrow="Organizer admin"
+        title={campaignName || khatamName || "Khatam"}
       >
-        <div className="max-w-[1200px] mx-auto">
-          <Link
-            to={`/k/${slug}/tracker`}
-            className="inline-flex items-center gap-1.5 text-white/70 hover:text-white text-sm mb-4 transition-colors no-underline"
-          >
-            <ArrowLeft size={14} />
-            Back to tracker
-          </Link>
-
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-                <Shield size={22} />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-widest text-white/50 font-medium mb-0.5">
-                  Organizer admin
-                </p>
-                <h1
-                  className="text-2xl sm:text-3xl font-normal text-white"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
-                >
-                  {campaignName || khatamName || "Khatam"}
-                </h1>
-                <p className="text-sm text-white/60 mt-0.5">
-                  Round {khatamNum}{khatamName ? ` · ${khatamName}` : ""} · {pct}% complete
-                </p>
-              </div>
-            </div>
-
-            {adminMode && (
-              <button
-                type="button"
-                onClick={deactivateAdmin}
-                className="self-start sm:self-center flex items-center gap-2 bg-white/10 border border-white/25 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-white/20 transition-colors"
-              >
-                <Lock size={14} />
-                Lock admin
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+        <CampaignTabs slug={slug} hideOverview={khatams.length <= 1} />
+      </PageHeader>
 
       {!adminMode ? (
-        /* PIN gate */
-        <div className="max-w-md mx-auto px-5 py-16">
-          <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#FFF5F5] border border-[#8B0000]/15 flex items-center justify-center mx-auto mb-4">
-              <Lock size={24} className="text-[#8B0000]" />
-            </div>
-            <h2
-              className="text-xl font-semibold text-gray-900 mb-1"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
-              Enter admin PIN
-            </h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Only organizers with the PIN can assign quarters, update names, and manage this khatam.
-            </p>
-            <form
-              onSubmit={e => { e.preventDefault(); tryAdmin(); }}
-              className="space-y-3"
-            >
-              <input
-                type="password"
-                value={adminPin}
-                onChange={e => setAdminPin(e.target.value)}
-                placeholder="4–6 digit PIN"
-                inputMode="numeric"
-                autoFocus
-                className="w-full bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 rounded-xl text-center text-lg tracking-widest outline-none focus:border-[#8B0000] focus:ring-2 focus:ring-[#8B0000]/10"
-              />
-              {adminErr && <p className="text-red-600 text-sm">{adminErr}</p>}
-              <button
-                type="submit"
-                className="w-full bg-[#8B0000] text-white py-3 rounded-xl text-sm font-semibold hover:bg-[#6B0000] transition-colors"
+        adminRestoring ? <Spinner /> : (
+          <main className="mx-auto max-w-sm px-4 py-10 sm:py-16">
+            <div className={cn(ui.card, "p-5 sm:p-6")}>
+              <h2 className="text-lg font-semibold text-stone-900">Enter your organizer PIN</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                This is the 4–6 digit PIN you chose when you created this campaign.
+              </p>
+              <form
+                className="mt-5 space-y-3"
+                onSubmit={async e => {
+                  e.preventDefault();
+                  setChecking(true);
+                  try {
+                    await tryAdmin();
+                  } finally {
+                    setChecking(false);
+                  }
+                }}
               >
-                Unlock admin panel
-              </button>
-            </form>
-          </div>
-        </div>
+                <label htmlFor="admin-pin" className="sr-only">PIN</label>
+                <input
+                  id="admin-pin"
+                  type="password"
+                  value={adminPin}
+                  onChange={e => setAdminPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  autoFocus
+                  placeholder="PIN"
+                  aria-invalid={!!adminErr}
+                  aria-describedby={adminErr ? "admin-pin-error" : undefined}
+                  className={cn(ui.input, "h-12 text-center text-xl tracking-[0.4em] placeholder:tracking-normal sm:text-xl")}
+                />
+                {adminErr && <p id="admin-pin-error" className={ui.error}>{adminErr}</p>}
+                <button
+                  type="submit"
+                  disabled={checking || adminPin.length < 4}
+                  className={cn(btn("primary", "lg"), "w-full")}
+                >
+                  {checking ? "Checking…" : "Unlock"}
+                </button>
+              </form>
+            </div>
+          </main>
+        )
       ) : (
-        <>
-          <KhatamSelector
-            khatams={khatams}
-            selectedId={selectedKhatamId}
-            onSelect={selectKhatam}
-            onReorder={adminReorderKhatams}
-          />
+        <main className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
+          {/* Section switcher */}
+          <div className="sticky top-14 z-30 -mx-4 border-b border-stone-200 bg-background/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="flex items-center gap-2">
+            <div role="tablist" aria-label="Admin sections" className="grid min-w-0 max-w-md flex-1 grid-cols-3 gap-1 rounded-lg bg-stone-200/60 p-1">
+              {TABS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  id={`admin-tab-${t.id}`}
+                  aria-selected={tab === t.id}
+                  aria-controls="admin-panel"
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    "h-9 rounded-md text-sm font-medium transition-colors",
+                    tab === t.id ? "bg-white text-stone-900 shadow-xs" : "text-stone-600 hover:text-stone-900",
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={deactivateAdmin}
+              title="Lock admin"
+              aria-label="Lock admin"
+              className={cn(btn("ghost", "md"), "ml-auto h-11 shrink-0 gap-1.5 px-2.5")}
+            >
+              <Lock size={16} />
+              Lock
+            </button>
+            </div>
+          </div>
 
-          {/* Stats strip */}
-          <div className="bg-white border-b border-gray-200">
-            <div className="max-w-[1200px] mx-auto px-5 py-4">
-              {khatmComplete && isLatestKhatam && (
-                <div className="rounded-xl p-4 mb-4 text-center text-white"
-                  style={{ background: "linear-gradient(135deg, #5A0000, #8B0000)" }}>
-                  <p className="text-sm font-medium mb-2">Alhamdulillah — this khatam is complete!</p>
+          <div id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`} className="pt-5">
+            {tab === "assign" && (
+              <div className="space-y-4">
+                <div className="max-w-xl">
+                  <AdminKhatamPicker khatams={khatams} selectedId={selectedKhatamId} onSelect={selectKhatam} />
+                </div>
+
+                {khatmComplete && isLatestKhatam && (
+                  <div className={cn(ui.card, "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between")}>
+                    <p className="text-sm text-stone-700">
+                      <span className="font-medium text-success">This Khatam is complete.</span>{" "}
+                      Add another to keep the campaign going.
+                    </p>
+                    <button type="button" onClick={openAddKhatams} className={cn(btn("primary", "md"), "shrink-0")}>
+                      Add Khatam
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-600">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ background: COLORS.dn.accent }} />
+                        <span className="font-medium tabular-nums text-stone-900">{done}</span> done
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ background: COLORS.cl.accent }} />
+                        <span className="font-medium tabular-nums text-stone-900">{prog}</span> claimed
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full border" style={{ borderColor: COLORS.av.border }} />
+                        <span className="font-medium tabular-nums text-stone-900">{rem}</span> available
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {pct}% of 120 quarters done. Tap a quarter to change it, or a Juz number to change all four.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setTab("campaign")}
-                    className="bg-white text-[#8B0000] px-5 py-2 rounded-full text-sm font-semibold hover:bg-gray-100 transition-colors"
+                    onClick={() => setAdminDrawer({ juz: 0, q: 0 })}
+                    className={btn("secondary", "md")}
                   >
-                    Add another Khatam
+                    Whole Khatam…
                   </button>
                 </div>
-              )}
 
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                {[
-                  { label: "Done", val: done, Icon: CheckCircle2, color: "#2E7D32", bg: "#E8F5E9" },
-                  { label: "In progress", val: prog, Icon: Clock, color: "#F57F17", bg: "#FFF8E1" },
-                  { label: "Available", val: rem, Icon: Circle, color: "#8B0000", bg: "#FFF5F5" },
-                ].map(s => (
-                  <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: s.bg }}>
-                    <s.Icon size={14} className="mx-auto mb-1" style={{ color: s.color }} />
-                    <div className="text-2xl font-bold leading-none" style={{ color: s.color, fontFamily: "'Playfair Display', serif" }}>
-                      {s.val}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-medium">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${pct}%`, background: "linear-gradient(90deg, #8B0000, #B71C1C)" }}
+                <AdminSlotGrid
+                  slots={slots}
+                  active={adminDrawer && adminDrawer.juz > 0 ? adminDrawer : adminSelected}
+                  onSelectSlot={(juz, q) => { setAdminSelected({ juz, q }); setAdminDrawer({ juz, q }); }}
+                  onSelectJuz={juz => setAdminDrawer({ juz, q: 0 })}
                 />
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Tabs */}
-          <div className="sticky top-16 z-30 bg-[#FAFAF9]/95 backdrop-blur border-b border-gray-200">
-            <div className="max-w-[1200px] mx-auto px-5 py-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTab("slots")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  tab === "slots"
-                    ? "bg-[#8B0000] text-white shadow-sm"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#8B0000]/30"
-                }`}
-              >
-                <LayoutGrid size={15} />
-                Manage slots
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("khatam")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  tab === "khatam"
-                    ? "bg-[#8B0000] text-white shadow-sm"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#8B0000]/30"
-                }`}
-              >
-                <Settings size={15} />
-                This Khatam
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("campaign")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  tab === "campaign"
-                    ? "bg-[#8B0000] text-white shadow-sm"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#8B0000]/30"
-                }`}
-              >
-                <Building2 size={15} />
-                Campaign
-              </button>
-            </div>
-          </div>
-
-          <div className="max-w-[1200px] mx-auto px-5 py-6">
-            {tab === "slots" ? (
-              <div>
-                <div className="bg-[#FFF5F5] border border-[#8B0000]/15 rounded-2xl px-4 py-3 mb-5">
-                  <p className="text-sm text-[#8B0000] font-medium">How to assign</p>
-                  <ul className="text-xs text-[#8B0000]/80 mt-1 space-y-0.5 list-disc list-inside">
-                    <li>Tap a <strong>quarter</strong> to change one slot’s status and name</li>
-                    <li>Use <strong>Assign Juz</strong> to set all 4 quarters at once (claim or mark complete)</li>
-                    <li>Pick a participant name or type a new one in the drawer</li>
-                  </ul>
-                </div>
-
-                <div className="flex flex-col gap-2.5">
-                  {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
-                    <JuzRow
-                      key={juz}
-                      juz={juz}
-                      slots={slots}
-                      adminMode
-                      adminSelected={adminSelected}
-                      onSelect={(j, q) => { setAdminSelected({ juz: j, q }); setAdminDrawer({ juz: j, q }); }}
-                      onOpenModal={() => {}}
-                      onAdminClaimJuz={juzNum => setAdminDrawer({ juz: juzNum, q: 0 })}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : (
+            {tab === "khatams" && (
               <div className="max-w-2xl">
-                <AdminSettingsPanel
-                  scope={tab}
-                  participants={participants}
+                <AdminKhatamSettings
+                  khatams={khatams}
+                  selectedId={selectedKhatamId}
+                  onSelect={selectKhatam}
+                  khatamName={khatamName}
+                  khatamNum={khatamNum}
+                  participationMode={participationMode}
+                  isKhatamComplete={khatmComplete}
                   claimLimit={claimLimit}
                   claimLimitInput={claimLimitInput}
                   setClaimLimitInput={setClaimLimitInput}
+                  locationCountry={locationCountry}
+                  showNamesOnGlobe={showNamesOnGlobe}
+                  addOpen={addOpen}
+                  setAddOpen={setAddOpen}
+                  onSaveClaimLimit={adminSaveClaimLimit}
+                  onRename={adminRenameKhatam}
+                  onSetParticipationMode={adminSetParticipationMode}
+                  onToggleGlobeNames={adminToggleGlobeNames}
+                  onCompleteAll={adminCompleteEntireKhatam}
+                  onDuplicate={adminDuplicateKhatam}
+                  onCreateKhatams={adminCreateCampaignKhatams}
+                  onReorder={adminReorderKhatams}
+                  onResetAll={adminResetAllToAvailable}
+                  onDelete={adminDeleteKhatam}
+                />
+              </div>
+            )}
+
+            {tab === "settings" && (
+              <div className="max-w-2xl">
+                <AdminSettingsPanel
+                  participants={participants}
+                  claimLimit={claimLimit}
                   campaignName={campaignName}
                   campaignDescription={campaignDescription}
                   campaignSearchable={campaignSearchable}
                   campaignGoals={campaignGoals}
-                  currentKhatamCount={khatams.length}
-                  currentKhatamName={khatamName}
-                  participationMode={participationMode}
-                  isKhatamComplete={khatmComplete}
-                  locationCountry={locationCountry}
-                  showNamesOnGlobe={showNamesOnGlobe}
                   onAddParticipant={adminAddParticipant}
                   onRemoveParticipant={adminRemoveParticipant}
                   onSetParticipantLimit={adminSetParticipantLimit}
-                  onSaveClaimLimit={adminSaveClaimLimit}
                   onSaveCampaign={adminUpdateCampaign}
                   onSaveSurahGoal={adminSaveSurahGoal}
                   onSetCampaignGoalEnabled={adminSetCampaignGoalEnabled}
-                  onCreateKhatams={adminCreateCampaignKhatams}
-                  onRenameKhatam={adminRenameKhatam}
-                  onSetParticipationMode={adminSetParticipationMode}
-                  onDuplicateKhatam={adminDuplicateKhatam}
-                  onCompleteEntireKhatam={adminCompleteEntireKhatam}
-                  onToggleGlobeNames={adminToggleGlobeNames}
-                  onResetAll={adminResetAllToAvailable}
-                  onDeleteKhatam={adminDeleteKhatam}
                 />
               </div>
             )}
@@ -314,7 +303,7 @@ export default function AdminPage() {
 
           <AdminSlotDrawer
             open={!!adminDrawer}
-            onClose={() => { setAdminDrawer(null); setAdminSelected(null); }}
+            onClose={closeDrawer}
             juz={adminDrawer?.juz ?? 1}
             q={adminDrawer?.q ?? 0}
             slots={slots}
@@ -323,10 +312,14 @@ export default function AdminPage() {
               setAdminSelected({ juz: j, q });
               await adminSetStatus(st, name, j, q);
             }}
-            onAssignJuz={async (j, st, name) => adminAssignJuz(j, st, name)}
-            onResetJuz={async j => adminResetJuzToAvailable(j)}
+            onAssignJuz={adminAssignJuz}
+            onResetJuz={adminResetJuzToAvailable}
+            onOpenJuz={juz => setAdminDrawer({ juz, q: 0 })}
+            onResetAll={adminResetAllToAvailable}
+            onAssignAll={adminAssignEntireQuran}
+            onCompleteAll={adminCompleteEntireKhatam}
           />
-        </>
+        </main>
       )}
     </div>
   );

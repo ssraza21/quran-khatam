@@ -5,28 +5,6 @@ export function khatamLabel(k: { name?: string | null; khatam_num: number }) {
   return k.name?.trim() || `Khatam ${k.khatam_num}`;
 }
 
-export function juzSlotsOwnedBy(slots: Slot[], juz: number, name: string): boolean {
-  const juzSlots = slots.filter(s => s.juz === juz);
-  if (juzSlots.length !== 4) return false;
-  return juzSlots.every(
-    s => s.status === "cl" && s.by?.toLowerCase() === name.toLowerCase()
-  );
-}
-
-export function juzReadyToComplete(slots: Slot[], juz: number): boolean {
-  const juzSlots = slots.filter(s => s.juz === juz);
-  if (juzSlots.length !== 4) return false;
-  if (!juzSlots.every(s => s.status === "cl")) return false;
-  const owners = [...new Set(juzSlots.map(s => s.by?.toLowerCase()).filter(Boolean))];
-  return owners.length === 1;
-}
-
-export function juzOwnerName(slots: Slot[], juz: number): string | null {
-  const juzSlots = slots.filter(s => s.juz === juz);
-  const names = [...new Set(juzSlots.map(s => s.by).filter(Boolean) as string[])];
-  return names.length === 1 ? names[0] : null;
-}
-
 export function buildWhatsAppKhatamMessage(khatamName: string, slug: string, slots: Slot[]): string {
   const lines: string[] = [];
   lines.push(`*${khatamName}*`);
@@ -55,6 +33,3 @@ export function timeAgo(iso: string | null) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function isStale(slot: Slot) {
-  return slot.status === "cl" && slot.at && Date.now() - new Date(slot.at).getTime() > 36e5;
-}
